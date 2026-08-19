@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Search, Receipt, Minus, Plus, X, Clock, LogOut } from "lucide-react";
+import { Search, Receipt, Minus, Plus, X, Clock, LogOut, Printer, CheckCircle2 } from "lucide-react";
 import { productosApi } from "../api/productos";
 import { clientesApi } from "../api/clientes";
 import { ventasApi } from "../api/ventas";
@@ -8,15 +8,17 @@ import { turnosApi } from "../api/turnos";
 import { ApiError } from "../api/client";
 import type { Producto } from "../types/producto";
 import type { Cliente } from "../types/cliente";
-import type { MetodoPago } from "../types/venta";
+import type { MetodoPago, Venta } from "../types/venta";
 import type { TurnoCaja } from "../types/turno";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import AbrirTurnoCard from "../components/AbrirTurnoCard";
 import CerrarTurnoDialog from "../components/CerrarTurnoDialog";
+import { printTicket } from "../lib/printTicket";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -36,6 +38,7 @@ export default function CajaPage() {
   const [cobrando, setCobrando] = useState(false);
   const [turno, setTurno] = useState<TurnoCaja | null | undefined>(undefined);
   const [mostrarCierre, setMostrarCierre] = useState(false);
+  const [ventaCompletada, setVentaCompletada] = useState<Venta | null>(null);
 
   const cargarTurno = async () => {
     try {
@@ -108,7 +111,7 @@ export default function CajaPage() {
     if (cart.length === 0) return;
     setCobrando(true);
     try {
-      await ventasApi.crear({
+      const venta = await ventasApi.crear({
         clienteId: clienteId || null,
         metodoPago,
         items: cart.map((c) => ({ productoId: c.productoId, cantidad: c.cantidad })),
@@ -117,6 +120,7 @@ export default function CajaPage() {
       setClienteId("");
       setMetodoPago("efectivo");
       toast.success("Venta registrada");
+      setVentaCompletada(venta);
       await cargar();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "No se pudo registrar la venta");
@@ -320,6 +324,34 @@ export default function CajaPage() {
           }}
         />
       )}
+
+      <Dialog open={!!ventaCompletada} onOpenChange={(o) => !o && setVentaCompletada(null)}>
+        <DialogContent className="sm:max-w-sm">
+          {ventaCompletada && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
+                    <CheckCircle2 size={18} />
+                  </span>
+                  <div>
+                    <DialogTitle>Venta registrada</DialogTitle>
+                    <DialogDescription>Total {money(ventaCompletada.total)}</DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setVentaCompletada(null)}>
+                  Nueva venta
+                </Button>
+                <Button onClick={() => printTicket(ventaCompletada)}>
+                  <Printer size={15} /> Imprimir ticket
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

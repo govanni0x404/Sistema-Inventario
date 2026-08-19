@@ -26,8 +26,22 @@ function serializeVenta(venta) {
       precioUnitario: Number(it.precioUnitario),
       subtotal: Number(it.subtotal),
     })),
+    devoluciones: venta.devoluciones?.map(serializeDevolucion),
   };
 }
+
+function serializeDevolucion(d) {
+  return {
+    ...d,
+    total: Number(d.total),
+    items: d.items.map((it) => ({ ...it, subtotal: Number(it.subtotal) })),
+  };
+}
+
+const DEVOLUCION_INCLUDE = {
+  usuario: { select: { id: true, nombre: true } },
+  items: true,
+};
 
 // GET /api/ventas?fecha=YYYY-MM-DD&clienteId=&metodoPago=&turnoCajaId=
 async function listar(req, res) {
@@ -64,6 +78,7 @@ async function obtener(req, res) {
       cliente: { select: { id: true, nombre: true } },
       items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
       turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
+      devoluciones: { include: DEVOLUCION_INCLUDE, orderBy: { fecha: "desc" } },
     },
   });
   if (!venta) throw new HttpError(404, "Venta no encontrada");
@@ -136,7 +151,11 @@ async function crear(req, res) {
         turnoCajaId: turnoAbierto.id,
         items: { create: itemsData },
       },
-      include: { cliente: { select: { id: true, nombre: true } }, items: true },
+      include: {
+        cliente: { select: { id: true, nombre: true } },
+        items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
+        turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
+      },
     });
 
     // Registro de auditoría: cada venta deja su propio rastro en el historial de movimientos de stock.

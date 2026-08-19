@@ -115,6 +115,7 @@ model Venta {
   movimientos MovimientoStock[]
   turnoCajaId String?
   turnoCaja   TurnoCaja?        @relation(fields: [turnoCajaId], references: [id])
+  devoluciones Devolucion[]
 
   @@index([clienteId])
   @@index([fecha])
@@ -154,18 +155,50 @@ model TurnoCaja {
 }
 
 model VentaItem {
-  id             String   @id @default(uuid())
-  ventaId        String
-  venta          Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
-  productoId     String
-  producto       Producto @relation(fields: [productoId], references: [id])
-  cantidad       Int
-  precioUnitario Decimal  @db.Decimal(10, 2)
-  subtotal       Decimal  @db.Decimal(10, 2)
+  id              String           @id @default(uuid())
+  ventaId         String
+  venta           Venta            @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  productoId      String
+  producto        Producto         @relation(fields: [productoId], references: [id])
+  cantidad        Int
+  precioUnitario  Decimal          @db.Decimal(10, 2)
+  subtotal        Decimal          @db.Decimal(10, 2)
+  devolucionItems DevolucionItem[]
 
   @@index([ventaId])
   @@index([productoId])
   @@map("venta_items")
+}
+
+// El total de Venta queda inmutable (registro histórico); lo devuelto se calcula
+// sumando estos registros, que son el origen de verdad de la auditoría de devoluciones.
+model Devolucion {
+  id        String           @id @default(uuid())
+  ventaId   String
+  venta     Venta            @relation(fields: [ventaId], references: [id])
+  motivo    String?
+  total     Decimal          @db.Decimal(10, 2)
+  usuarioId String?
+  usuario   Usuario?         @relation(fields: [usuarioId], references: [id])
+  fecha     DateTime         @default(now())
+  items     DevolucionItem[]
+
+  @@index([ventaId])
+  @@map("devoluciones")
+}
+
+model DevolucionItem {
+  id           String     @id @default(uuid())
+  devolucionId String
+  devolucion   Devolucion @relation(fields: [devolucionId], references: [id], onDelete: Cascade)
+  ventaItemId  String
+  ventaItem    VentaItem  @relation(fields: [ventaItemId], references: [id])
+  cantidad     Int
+  subtotal     Decimal    @db.Decimal(10, 2)
+
+  @@index([devolucionId])
+  @@index([ventaItemId])
+  @@map("devolucion_items")
 }
 
 model Usuario {
@@ -177,6 +210,7 @@ model Usuario {
   ventas           Venta[]
   historialPrecios HistorialPrecio[]
   movimientosStock MovimientoStock[]
+  devoluciones     Devolucion[]
   turnosAbiertos   TurnoCaja[]       @relation("TurnosAbiertos")
   turnosCerrados   TurnoCaja[]       @relation("TurnosCerrados")
 

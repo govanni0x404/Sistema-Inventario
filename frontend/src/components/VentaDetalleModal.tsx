@@ -1,7 +1,9 @@
-import { Receipt } from "lucide-react";
+import { Printer, Receipt } from "lucide-react";
 import type { Venta } from "../types/venta";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { printTicket } from "../lib/printTicket";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -12,16 +14,19 @@ export default function VentaDetalleModal({ venta, onClose }: { venta: Venta | n
         {venta && (
           <>
             <DialogHeader>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 pr-8">
                 <span className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
                   <Receipt size={17} />
                 </span>
-                <div>
+                <div className="flex-1 min-w-0">
                   <DialogTitle>Detalle de venta</DialogTitle>
                   <DialogDescription>
                     {new Date(venta.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
                   </DialogDescription>
                 </div>
+                <Button variant="outline" size="sm" onClick={() => printTicket(venta)} className="shrink-0">
+                  <Printer size={14} /> Imprimir
+                </Button>
               </div>
             </DialogHeader>
 
