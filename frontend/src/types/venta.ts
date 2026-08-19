@@ -17,6 +17,8 @@ export interface Venta {
   total: number;
   metodoPago: MetodoPago;
   items: VentaItem[];
+  turnoCajaId?: string | null;
+  turnoCaja?: { id: string; tipoTurno: { nombre: string } } | null;
 }
 
 export type VentaInput = {

@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { ventasApi } from "../api/ventas";
 import { clientesApi } from "../api/clientes";
+import { turnosApi } from "../api/turnos";
 import { ApiError } from "../api/client";
 import type { Venta, MetodoPago } from "../types/venta";
 import type { Cliente } from "../types/cliente";
+import type { TurnoCaja } from "../types/turno";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -11,30 +13,48 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import VentaDetalleModal from "../components/VentaDetalleModal";
+import DataPagination from "../components/DataPagination";
+import { usePagedList } from "../hooks/usePagedList";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 const METODOS: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
 const TODOS = "__todos__";
 
+function hoyStr() {
+  const d = new Date();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
 export default function HistorialPage() {
   const [ventas, setVentas] = useState<Venta[] | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [turnos, setTurnos] = useState<TurnoCaja[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<Venta | null>(null);
-  const [fecha, setFecha] = useState("");
+  const [fecha, setFecha] = useState(hoyStr());
   const [clienteId, setClienteId] = useState("");
   const [metodoPago, setMetodoPago] = useState("");
+  const [turnoCajaId, setTurnoCajaId] = useState("");
 
   const cargar = async () => {
     try {
       setLoadError(null);
-      const [v, c] = await Promise.all([
-        ventasApi.listar({ fecha: fecha || undefined, clienteId: clienteId || undefined, metodoPago: metodoPago || undefined }),
+      const [v, c, t] = await Promise.all([
+        ventasApi.listar({
+          fecha: fecha || undefined,
+          clienteId: clienteId || undefined,
+          metodoPago: metodoPago || undefined,
+          turnoCajaId: turnoCajaId || undefined,
+        }),
         clientesApi.listar(),
+        turnosApi.listar(),
       ]);
       setVentas(v);
       setClientes(c);
+      setTurnos(t);
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : "No se pudo conectar con el servidor");
     }
@@ -43,14 +63,54 @@ export default function HistorialPage() {
   useEffect(() => {
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, clienteId, metodoPago]);
+  }, [fecha, clienteId, metodoPago, turnoCajaId]);
 
   const nombreCliente = (v: Venta) => v.cliente?.nombre || "Cliente general";
+
+  const nombreTurno = (t: TurnoCaja) =>
+    `${t.tipoTurno.nombre} · ${new Date(t.fechaApertura).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}${
+      t.estado === "abierto" ? " (abierto)" : ""
+    }`;
+
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(
+    ventas ?? [],
+    10,
+    `${fecha}-${clienteId}-${metodoPago}-${turnoCajaId}`
+  );
+
+  const hayFiltros = fecha || clienteId || metodoPago || turnoCajaId;
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Input type="date" className="w-auto" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        <Input
+          type="date"
+          className="w-auto"
+          value={fecha}
+          onChange={(e) => {
+            setFecha(e.target.value);
+            setTurnoCajaId("");
+          }}
+        />
+        <Select
+          value={turnoCajaId || TODOS}
+          onValueChange={(v) => {
+            setTurnoCajaId(v === TODOS ? "" : v);
+            setFecha("");
+          }}
+        >
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="Todos los turnos" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TODOS}>Todos los turnos</SelectItem>
+            {turnos.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {nombreTurno(t)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={clienteId || TODOS} onValueChange={(v) => setClienteId(v === TODOS ? "" : v)}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Todos los clientes" />
@@ -77,7 +137,7 @@ export default function HistorialPage() {
             ))}
           </SelectContent>
         </Select>
-        {(fecha || clienteId || metodoPago) && (
+        {hayFiltros && (
           <Button
             variant="ghost"
             size="sm"
@@ -85,6 +145,7 @@ export default function HistorialPage() {
               setFecha("");
               setClienteId("");
               setMetodoPago("");
+              setTurnoCajaId("");
             }}
           >
             Limpiar filtros
@@ -115,17 +176,19 @@ export default function HistorialPage() {
               <TableRow>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Fecha</TableHead>
+                <TableHead>Turno</TableHead>
                 <TableHead>Método</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ventas.map((v) => (
+              {pageItems.map((v) => (
                 <TableRow key={v.id} className="cursor-pointer" onClick={() => setDetalle(v)}>
                   <TableCell className="font-body text-sm font-medium text-foreground">{nombreCliente(v)}</TableCell>
                   <TableCell className="font-body text-xs text-muted-foreground">
                     {new Date(v.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
                   </TableCell>
+                  <TableCell className="font-body text-xs text-muted-foreground">{v.turnoCaja?.tipoTurno.nombre ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="capitalize">
                       {v.metodoPago}
@@ -138,6 +201,8 @@ export default function HistorialPage() {
           </Table>
         </div>
       )}
+
+      <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
 
       <VentaDetalleModal venta={detalle} onClose={() => setDetalle(null)} />
     </div>

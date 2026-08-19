@@ -36,6 +36,12 @@ export default function VentaDetalleModal({ venta, onClose }: { venta: Venta | n
                   {venta.metodoPago}
                 </Badge>
               </div>
+              {venta.turnoCaja && (
+                <div>
+                  <div className="font-body text-xs text-muted-foreground mb-0.5">Turno</div>
+                  <div className="font-body text-sm font-medium text-foreground">{venta.turnoCaja.tipoTurno.nombre}</div>
+                </div>
+              )}
             </div>
 
             <div>

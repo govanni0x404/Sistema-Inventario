@@ -29,13 +29,14 @@ function serializeVenta(venta) {
   };
 }
 
-// GET /api/ventas?fecha=YYYY-MM-DD&clienteId=&metodoPago=
+// GET /api/ventas?fecha=YYYY-MM-DD&clienteId=&metodoPago=&turnoCajaId=
 async function listar(req, res) {
-  const { fecha, clienteId, metodoPago } = req.query;
+  const { fecha, clienteId, metodoPago, turnoCajaId } = req.query;
   const where = {};
 
   if (clienteId) where.clienteId = String(clienteId);
   if (metodoPago) where.metodoPago = String(metodoPago);
+  if (turnoCajaId) where.turnoCajaId = String(turnoCajaId);
   if (fecha) {
     const inicio = new Date(`${fecha}T00:00:00`);
     const fin = new Date(`${fecha}T23:59:59.999`);
@@ -47,6 +48,7 @@ async function listar(req, res) {
     include: {
       cliente: { select: { id: true, nombre: true } },
       items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
+      turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
     },
     orderBy: { fecha: "desc" },
   });
@@ -61,6 +63,7 @@ async function obtener(req, res) {
     include: {
       cliente: { select: { id: true, nombre: true } },
       items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
+      turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
     },
   });
   if (!venta) throw new HttpError(404, "Venta no encontrada");

@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDialog from "../components/ConfirmDialog";
 import EntityForm, { type FieldDef } from "../components/EntityForm";
+import DataPagination from "../components/DataPagination";
+import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
@@ -54,6 +56,8 @@ export default function ClientesPage() {
     const term = q.toLowerCase();
     return clientes.filter((c) => c.nombre.toLowerCase().includes(term));
   }, [clientes, q]);
+
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
 
   const toggleExpand = async (cliente: Cliente) => {
     if (expanded === cliente.id) {
@@ -163,7 +167,7 @@ export default function ClientesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((c) => (
+              {pageItems.map((c) => (
                 <Fragment key={c.id}>
                   <TableRow className="cursor-pointer" onClick={() => toggleExpand(c)}>
                     <TableCell>
@@ -236,6 +240,8 @@ export default function ClientesPage() {
           </Table>
         </div>
       )}
+
+      <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
 
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
         <DialogContent>

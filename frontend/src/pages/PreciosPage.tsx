@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import PrecioForm from "../components/PrecioForm";
+import DataPagination from "../components/DataPagination";
+import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
@@ -44,6 +46,8 @@ export default function PreciosPage() {
     const term = q.toLowerCase();
     return productos.filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term));
   }, [productos, q]);
+
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
 
   const cargarHistorial = async (productoId: string) => {
     setHistorial(null);
@@ -126,7 +130,7 @@ export default function PreciosPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((p) => {
+              {pageItems.map((p) => {
                 const margen = p.precioVenta - p.precioCompra;
                 return (
                   <Fragment key={p.id}>
@@ -197,6 +201,8 @@ export default function PreciosPage() {
           </Table>
         </div>
       )}
+
+      <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
 
       <Dialog open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
         <DialogContent>

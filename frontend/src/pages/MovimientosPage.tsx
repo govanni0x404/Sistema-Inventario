@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import MovimientoForm from "../components/MovimientoForm";
+import DataPagination from "../components/DataPagination";
+import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
 
 export default function MovimientosPage() {
@@ -43,6 +45,8 @@ export default function MovimientosPage() {
     const term = q.toLowerCase();
     return productos.filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term));
   }, [productos, q]);
+
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
 
   const cargarHistorial = async (productoId: string) => {
     setHistorial(null);
@@ -122,7 +126,7 @@ export default function MovimientosPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((p) => (
+              {pageItems.map((p) => (
                 <Fragment key={p.id}>
                   <TableRow>
                     <TableCell className="cursor-pointer" onClick={() => toggleExpand(p)}>
@@ -208,6 +212,8 @@ export default function MovimientosPage() {
           </Table>
         </div>
       )}
+
+      <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
 
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
         <DialogContent>

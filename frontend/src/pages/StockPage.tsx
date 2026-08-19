@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import DataPagination from "../components/DataPagination";
+import { usePagedList } from "../hooks/usePagedList";
 
 export default function StockPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
@@ -36,6 +38,8 @@ export default function StockPage() {
       .filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term))
       .filter((p) => !soloStockBajo || p.stock <= p.stockMinimo);
   }, [productos, q, soloStockBajo]);
+
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, `${q}-${soloStockBajo}`);
 
   return (
     <div>
@@ -84,7 +88,7 @@ export default function StockPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((p) => {
+              {pageItems.map((p) => {
                 const low = p.stock <= p.stockMinimo;
                 return (
                   <TableRow key={p.id}>
@@ -112,6 +116,8 @@ export default function StockPage() {
           </Table>
         </div>
       )}
+
+      <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
     </div>
   );
 }

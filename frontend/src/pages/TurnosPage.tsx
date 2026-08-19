@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import TipoTurnoManager from "../components/TipoTurnoManager";
+import DataPagination from "../components/DataPagination";
+import { usePagedList } from "../hooks/usePagedList";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -30,6 +32,8 @@ export default function TurnosPage() {
   useEffect(() => {
     cargar();
   }, []);
+
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(turnos ?? [], 10);
 
   const abrirDetalle = async (t: TurnoCaja) => {
     try {
@@ -77,7 +81,7 @@ export default function TurnosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {turnos.map((t) => (
+                {pageItems.map((t) => (
                   <TableRow key={t.id} className="cursor-pointer" onClick={() => abrirDetalle(t)}>
                     <TableCell className="font-body text-sm font-medium text-foreground">{t.tipoTurno.nombre}</TableCell>
                     <TableCell className="font-body text-xs text-muted-foreground">
@@ -105,6 +109,8 @@ export default function TurnosPage() {
             </Table>
           </div>
         )}
+
+        <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
       </div>
 
       <Dialog open={!!detalle} onOpenChange={(o) => !o && setDetalle(null)}>

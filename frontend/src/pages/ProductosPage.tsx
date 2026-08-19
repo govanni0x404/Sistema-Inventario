@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ProductoForm from "../components/ProductoForm";
+import DataPagination from "../components/DataPagination";
+import { usePagedList } from "../hooks/usePagedList";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -45,6 +47,8 @@ export default function ProductosPage() {
     const term = q.toLowerCase();
     return productos.filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term));
   }, [productos, q]);
+
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
 
   const save = async (data: ProductoInput) => {
     if (!modal) return;
@@ -144,7 +148,7 @@ export default function ProductosPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((p) => {
+              {pageItems.map((p) => {
                 const low = p.stock <= p.stockMinimo;
                 return (
                   <TableRow key={p.id}>
@@ -201,6 +205,8 @@ export default function ProductosPage() {
           </Table>
         </div>
       )}
+
+      <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
 
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
         <DialogContent>
