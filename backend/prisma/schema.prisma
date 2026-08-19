@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Controla, por rol, si una sección de la app está habilitada. El rol "admin" nunca se consulta
+// aquí (siempre tiene acceso total) para que un admin no pueda bloquearse a sí mismo.
+model RolPermiso {
+  id        String  @id @default(uuid())
+  rol       String
+  seccion   String
+  permitido Boolean @default(true)
+
+  @@unique([rol, seccion])
+  @@map("rol_permisos")
+}
+
+model Producto {
+  id              String            @id @default(uuid())
+  sku             String            @unique
+  nombre          String
+  categoria       String?
+  precioCompra    Decimal           @db.Decimal(10, 2)
+  precioVenta     Decimal           @db.Decimal(10, 2)
+  stock           Int               @default(0)
+  stockMinimo     Int               @default(0)
+  unidad          String            @default("unidad")
+  proveedorId     String?
+  proveedor       Proveedor?        @relation(fields: [proveedorId], references: [id])
+  activo          Boolean           @default(true)
+  creadoEn        DateTime          @default(now())
+  actualizadoEn   DateTime          @updatedAt
+  ventaItems      VentaItem[]
+  historialPrecios HistorialPrecio[]
+  movimientos     MovimientoStock[]
+
+  @@index([proveedorId])
+  @@map("productos")
+}
+
+model HistorialPrecio {
+  id                   String   @id @default(uuid())
+  productoId           String
+  producto             Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  precioCompraAnterior Decimal  @db.Decimal(10, 2)
+  precioCompraNuevo    Decimal  @db.Decimal(10, 2)
+  precioVentaAnterior  Decimal  @db.Decimal(10, 2)
+  precioVentaNuevo     Decimal  @db.Decimal(10, 2)
+  usuarioId            String?
+  usuario              Usuario? @relation(fields: [usuarioId], references: [id])
+  fecha                DateTime @default(now())
+
+  @@index([productoId])
+  @@map("historial_precios")
+}
+
+model MovimientoStock {
+  id              String   @id @default(uuid())
+  productoId      String
+  producto        Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  tipo            String   // "entrada" | "salida"
+  origen          String   @default("manual") // "manual" | "venta"
+  cantidad        Int
+  stockResultante Int
+  motivo          String?
+  ventaId         String?
+  venta           Venta?   @relation(fields: [ventaId], references: [id])
+  usuarioId       String?
+  usuario         Usuario? @relation(fields: [usuarioId], references: [id])
+  fecha           DateTime @default(now())
+
+  @@index([productoId])
+  @@index([ventaId])
+  @@map("movimientos_stock")
+}
+
+model Cliente {
+  id        String   @id @default(uuid())
+  nombre    String
+  telefono  String?
+  email     String?
+  direccion String?
+  creadoEn  DateTime @default(now())
+  ventas    Venta[]
+
+  @@map("clientes")
+}
+
+model Proveedor {
+  id        String     @id @default(uuid())
+  nombre    String
+  telefono  String?
+  email     String?
+  contacto  String?
+  creadoEn  DateTime   @default(now())
+  productos Producto[]
+
+  @@map("proveedores")
+}
+
+model Venta {
+  id         String      @id @default(uuid())
+  fecha      DateTime    @default(now())
+  clienteId  String?
+  cliente    Cliente?    @relation(fields: [clienteId], references: [id])
+  total      Decimal     @db.Decimal(10, 2)
+  metodoPago String
+  items      VentaItem[]
+  usuarioId  String?
+  usuario    Usuario?    @relation(fields: [usuarioId], references: [id])
+  movimientos MovimientoStock[]
+
+  @@index([clienteId])
+  @@index([fecha])
+  @@map("ventas")
+}
+
+model VentaItem {
+  id             String   @id @default(uuid())
+  ventaId        String
+  venta          Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  productoId     String
+  producto       Producto @relation(fields: [productoId], references: [id])
+  cantidad       Int
+  precioUnitario Decimal  @db.Decimal(10, 2)
+  subtotal       Decimal  @db.Decimal(10, 2)
+
+  @@index([ventaId])
+  @@index([productoId])
+  @@map("venta_items")
+}
+
+model Usuario {
+  id               String            @id @default(uuid())
+  nombre           String
+  email            String            @unique
+  password         String
+  rol              String            @default("cajero")
+  ventas           Venta[]
+  historialPrecios HistorialPrecio[]
+  movimientosStock MovimientoStock[]
+
+  @@map("usuarios")
+}
