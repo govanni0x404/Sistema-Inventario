@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { SidebarProvider } from "./context/SidebarContext";
 import RequireAuth from "./components/RequireAuth";
 import RequireSeccion from "./components/RequireSeccion";
 import RequireAdmin from "./components/RequireAdmin";
-import Layout from "./components/Layout";
+import AppLayout from "./components/AppLayout";
 import LoginPage from "./pages/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
 import ProductosPage from "./pages/ProductosPage";
 import StockPage from "./pages/StockPage";
 import MovimientosPage from "./pages/MovimientosPage";
@@ -12,6 +14,7 @@ import PreciosPage from "./pages/PreciosPage";
 import ClientesPage from "./pages/ClientesPage";
 import ProveedoresPage from "./pages/ProveedoresPage";
 import CajaPage from "./pages/CajaPage";
+import TurnosPage from "./pages/TurnosPage";
 import HistorialPage from "./pages/HistorialPage";
 import PermisosPage from "./pages/PermisosPage";
 
@@ -19,21 +22,38 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
+        <SidebarProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
           <Route
             element={
               <RequireAuth>
-                <Layout />
+                <AppLayout />
               </RequireAuth>
             }
           >
-            <Route index element={<Navigate to="/caja" replace />} />
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route
+              path="/dashboard"
+              element={
+                <RequireSeccion seccion="dashboard">
+                  <DashboardPage />
+                </RequireSeccion>
+              }
+            />
             <Route
               path="/caja"
               element={
                 <RequireSeccion seccion="caja">
                   <CajaPage />
+                </RequireSeccion>
+              }
+            />
+            <Route
+              path="/turnos"
+              element={
+                <RequireSeccion seccion="turnos">
+                  <TurnosPage />
                 </RequireSeccion>
               }
             />
@@ -101,9 +121,10 @@ export default function App() {
                 </RequireAdmin>
               }
             />
-            <Route path="*" element={<Navigate to="/caja" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
+        </SidebarProvider>
       </AuthProvider>
     </BrowserRouter>
   );

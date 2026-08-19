@@ -1,6 +1,16 @@
 export type Rol = "admin" | "cajero";
 
-export type Seccion = "caja" | "productos" | "stock" | "bodega" | "precios" | "clientes" | "proveedores" | "historial";
+export type Seccion =
+  | "dashboard"
+  | "caja"
+  | "turnos"
+  | "productos"
+  | "stock"
+  | "bodega"
+  | "precios"
+  | "clientes"
+  | "proveedores"
+  | "historial";
 
 export interface Usuario {
   id: string;

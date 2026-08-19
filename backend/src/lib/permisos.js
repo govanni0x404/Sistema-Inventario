@@ -1,7 +1,7 @@
 const prisma = require("./prisma");
 
 // Debe reflejar las secciones de navegación del frontend.
-const SECCIONES = ["caja", "productos", "stock", "bodega", "precios", "clientes", "proveedores", "historial"];
+const SECCIONES = ["dashboard", "caja", "turnos", "productos", "stock", "bodega", "precios", "clientes", "proveedores", "historial"];
 
 // Roles a los que aplica el sistema de permisos. "admin" queda fuera a propósito: siempre
 // tiene acceso total, así nunca puede bloquearse a sí mismo (ni a esta misma pantalla).

@@ -4,6 +4,10 @@ import { Navigate, useLocation } from "react-router-dom";
 import { LogIn } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { ApiError } from "../api/client";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
   const { usuario, login } = useAuth();
@@ -14,7 +18,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   if (usuario) {
-    const from = (location.state as { from?: string })?.from || "/caja";
+    const from = (location.state as { from?: string })?.from || "/dashboard";
     return <Navigate to={from} replace />;
   }
 
@@ -31,56 +35,39 @@ export default function LoginPage() {
     }
   };
 
-  const inputCls =
-    "w-full font-body text-sm px-3 py-2.5 rounded-lg outline-none border border-border text-ink bg-white focus:border-accent transition-colors";
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg px-4">
-      <div className="w-full max-w-sm rounded-2xl p-8 bg-surface border border-border">
-        <div className="flex items-center gap-3 mb-1">
-          <span className="flex items-center justify-center w-10 h-10 rounded-full bg-accent-soft text-accent-dark shrink-0">
-            <LogIn size={18} />
-          </span>
-          <div>
-            <h1 className="font-display text-lg font-bold text-ink leading-tight">Caja &amp; Inventario</h1>
-            <p className="font-body text-xs text-ink-soft">Inicia sesión para continuar</p>
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary shrink-0">
+              <LogIn size={18} />
+            </span>
+            <div>
+              <h1 className="font-display text-lg font-bold text-foreground leading-tight">Caja &amp; Inventario</h1>
+              <p className="font-body text-xs text-muted-foreground">Inicia sesión para continuar</p>
+            </div>
           </div>
-        </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Correo</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Contraseña</Label>
+              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </div>
 
-        <form onSubmit={handleSubmit} className="mt-6">
-          <label className="block mb-3">
-            <span className="block font-body text-xs font-medium mb-1 text-ink-soft">Correo</span>
-            <input
-              type="email"
-              className={inputCls}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoFocus
-              required
-            />
-          </label>
-          <label className="block mb-4">
-            <span className="block font-body text-xs font-medium mb-1 text-ink-soft">Contraseña</span>
-            <input
-              type="password"
-              className={inputCls}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
+            {error && <p className="font-body text-xs text-destructive">{error}</p>}
 
-          {error && <div className="font-body text-xs text-warn mb-4">{error}</div>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full font-body text-sm font-medium py-2.5 rounded-lg text-white bg-accent disabled:opacity-60"
-          >
-            {loading ? "Ingresando..." : "Ingresar"}
-          </button>
-        </form>
-      </div>
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Ingresando..." : "Ingresar"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

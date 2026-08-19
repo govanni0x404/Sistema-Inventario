@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Search, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { clientesApi } from "../api/clientes";
 import { ApiError } from "../api/client";
 import type { Cliente, ClienteConVentas, ClienteInput } from "../types/cliente";
-import Modal from "../components/Modal";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDialog from "../components/ConfirmDialog";
 import EntityForm, { type FieldDef } from "../components/EntityForm";
-import Toast from "../components/Toast";
+import { cn } from "@/lib/utils";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -27,12 +32,9 @@ export default function ClientesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Cliente | null>(null);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]> | undefined>();
-  const [toast, setToast] = useState<{ text: string; variant?: "success" | "error" } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<ClienteConVentas | null>(null);
   const [detalleCargando, setDetalleCargando] = useState(false);
-
-  const notify = (text: string, variant: "success" | "error" = "success") => setToast({ text, variant });
 
   const cargar = async () => {
     try {
@@ -65,7 +67,7 @@ export default function ClientesPage() {
     try {
       setDetalle(await clientesApi.obtener(cliente.id));
     } catch {
-      notify("No se pudo cargar el historial de compras", "error");
+      toast.error("No se pudo cargar el historial de compras");
     } finally {
       setDetalleCargando(false);
     }
@@ -85,19 +87,19 @@ export default function ClientesPage() {
       if (modal.mode === "new") {
         const creado = await clientesApi.crear(input);
         setClientes((prev) => (prev ? [...prev, creado] : [creado]));
-        notify("Cliente creado");
+        toast.success("Cliente creado");
       } else {
         const actualizado = await clientesApi.actualizar(modal.data.id, input);
         setClientes((prev) => prev?.map((c) => (c.id === actualizado.id ? actualizado : c)) ?? null);
-        notify("Cliente actualizado");
+        toast.success("Cliente actualizado");
       }
       setModal(null);
     } catch (e) {
       if (e instanceof ApiError) {
         setFieldErrors((e.detalles as { fieldErrors?: Record<string, string[]> })?.fieldErrors);
-        notify(e.message, "error");
+        toast.error(e.message);
       } else {
-        notify("Error al guardar el cliente", "error");
+        toast.error("Error al guardar el cliente");
       }
     } finally {
       setSaving(false);
@@ -109,9 +111,9 @@ export default function ClientesPage() {
     try {
       await clientesApi.eliminar(deleteTarget.id);
       setClientes((prev) => prev?.filter((c) => c.id !== deleteTarget.id) ?? null);
-      notify("Cliente eliminado");
+      toast.success("Cliente eliminado");
     } catch (e) {
-      notify(e instanceof ApiError ? e.message : "No se pudo eliminar el cliente", "error");
+      toast.error(e instanceof ApiError ? e.message : "No se pudo eliminar el cliente");
     } finally {
       setDeleteTarget(null);
     }
@@ -121,126 +123,145 @@ export default function ClientesPage() {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" />
-          <input
-            className="w-full font-body text-sm pl-9 pr-3 py-2 rounded-lg outline-none border border-border text-ink bg-white focus:border-accent transition-colors"
-            placeholder="Buscar por nombre"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar por nombre" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <button
+        <Button
           onClick={() => {
             setFieldErrors(undefined);
             setModal({ mode: "new" });
           }}
-          className="flex items-center gap-1 font-body text-sm font-medium px-3.5 py-2 rounded-lg text-white bg-accent shrink-0"
         >
           <Plus size={16} /> Nuevo
-        </button>
+        </Button>
       </div>
 
       {loadError && (
-        <div className="font-body text-sm text-center py-10 text-warn">
+        <div className="font-body text-sm text-center py-10 text-destructive">
           {loadError} — <button className="underline" onClick={cargar}>reintentar</button>
         </div>
       )}
       {!loadError && clientes === null && (
-        <div className="font-body text-sm text-center py-10 text-ink-soft">Cargando clientes…</div>
-      )}
-      {!loadError && clientes !== null && filtered.length === 0 && (
-        <div className="font-body text-sm text-center py-10 text-ink-soft">No hay clientes registrados.</div>
-      )}
-
-      {!loadError && filtered.length > 0 && (
-        <div className="space-y-2.5">
-          {filtered.map((c) => (
-            <div key={c.id} className="rounded-xl border border-border bg-surface overflow-hidden">
-              <button onClick={() => toggleExpand(c)} className="w-full flex items-center gap-4 p-4 text-left">
-                <div className="flex-1 min-w-0">
-                  <div className="font-body font-medium text-sm text-ink">{c.nombre}</div>
-                  <div className="font-body text-xs mt-0.5 truncate text-ink-soft">
-                    {[c.telefono, c.email, c.direccion].filter(Boolean).join(" · ") || "Sin datos adicionales"}
-                  </div>
-                </div>
-                <ChevronDown
-                  size={16}
-                  className={`shrink-0 text-ink-soft transition-transform ${expanded === c.id ? "rotate-180" : ""}`}
-                />
-                <div className="flex gap-1 shrink-0">
-                  <span
-                    role="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFieldErrors(undefined);
-                      setModal({ mode: "edit", data: c });
-                    }}
-                    className="p-1.5 rounded-lg text-ink-soft"
-                  >
-                    <Pencil size={15} />
-                  </span>
-                  <span
-                    role="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(c);
-                    }}
-                    className="p-1.5 rounded-lg text-warn"
-                  >
-                    <Trash2 size={15} />
-                  </span>
-                </div>
-              </button>
-
-              {expanded === c.id && (
-                <div className="px-4 pb-4 border-t border-border">
-                  <div className="font-body text-xs font-medium mt-3 mb-2 text-ink-soft">Historial de compras</div>
-                  {detalleCargando && <div className="font-body text-xs text-ink-soft">Cargando…</div>}
-                  {!detalleCargando && detalle && detalle.ventas.length === 0 && (
-                    <div className="font-body text-xs text-ink-soft">Este cliente aún no tiene compras.</div>
-                  )}
-                  {!detalleCargando && detalle && detalle.ventas.length > 0 && (
-                    <div className="space-y-1.5">
-                      {detalle.ventas.map((v) => (
-                        <div key={v.id} className="flex justify-between font-mono text-xs text-ink-soft">
-                          <span>
-                            {new Date(v.fecha).toLocaleDateString("es-MX")} · {v.metodoPago} · {v.items.length} ítem(s)
-                          </span>
-                          <span className="text-accent font-semibold">{money(v.total)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+        <div className="space-y-2">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       )}
-
-      {modal && (
-        <Modal title={modal.mode === "new" ? "Nuevo cliente" : "Editar cliente"} onClose={() => setModal(null)}>
-          <EntityForm
-            fields={fields}
-            initial={modal.mode === "edit" ? (modal.data as unknown as Record<string, unknown>) : undefined}
-            fieldErrors={fieldErrors}
-            onCancel={() => setModal(null)}
-            onSave={save}
-            saving={saving}
-          />
-        </Modal>
+      {!loadError && clientes !== null && filtered.length === 0 && (
+        <div className="font-body text-sm text-center py-10 text-muted-foreground">No hay clientes registrados.</div>
       )}
 
-      {deleteTarget && (
-        <ConfirmDialog
-          title="Eliminar cliente"
-          message={`¿Eliminar a "${deleteTarget.nombre}"?`}
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={confirmDelete}
-        />
+      {!loadError && filtered.length > 0 && (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Contacto</TableHead>
+                <TableHead className="w-24 text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((c) => (
+                <Fragment key={c.id}>
+                  <TableRow className="cursor-pointer" onClick={() => toggleExpand(c)}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <ChevronDown
+                          size={14}
+                          className={cn("text-muted-foreground transition-transform shrink-0", expanded === c.id && "rotate-180")}
+                        />
+                        <span className="font-body font-medium text-sm text-foreground">{c.nombre}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-body text-xs text-muted-foreground">
+                      {[c.telefono, c.email, c.direccion].filter(Boolean).join(" · ") || "Sin datos adicionales"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFieldErrors(undefined);
+                            setModal({ mode: "edit", data: c });
+                          }}
+                          aria-label="Editar"
+                        >
+                          <Pencil size={15} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(c);
+                          }}
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {expanded === c.id && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={3} className="bg-muted/40 whitespace-normal py-3">
+                        <div className="font-body text-xs font-medium mb-2 text-muted-foreground">Historial de compras</div>
+                        {detalleCargando && <div className="font-body text-xs text-muted-foreground">Cargando…</div>}
+                        {!detalleCargando && detalle && detalle.ventas.length === 0 && (
+                          <div className="font-body text-xs text-muted-foreground">Este cliente aún no tiene compras.</div>
+                        )}
+                        {!detalleCargando && detalle && detalle.ventas.length > 0 && (
+                          <div className="space-y-1.5">
+                            {detalle.ventas.map((v) => (
+                              <div key={v.id} className="flex justify-between font-mono text-xs text-muted-foreground">
+                                <span>
+                                  {new Date(v.fecha).toLocaleDateString("es-MX")} · {v.metodoPago} · {v.items.length} ítem(s)
+                                </span>
+                                <span className="text-primary font-semibold">{money(v.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
-      {toast && <Toast text={toast.text} variant={toast.variant} onDone={() => setToast(null)} />}
+      <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{modal?.mode === "new" ? "Nuevo cliente" : "Editar cliente"}</DialogTitle>
+          </DialogHeader>
+          {modal && (
+            <EntityForm
+              fields={fields}
+              initial={modal.mode === "edit" ? (modal.data as unknown as Record<string, unknown>) : undefined}
+              fieldErrors={fieldErrors}
+              onCancel={() => setModal(null)}
+              onSave={save}
+              saving={saving}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Eliminar cliente"
+        message={`¿Eliminar a "${deleteTarget?.nombre}"?`}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

@@ -4,11 +4,18 @@ import { clientesApi } from "../api/clientes";
 import { ApiError } from "../api/client";
 import type { Venta, MetodoPago } from "../types/venta";
 import type { Cliente } from "../types/cliente";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import VentaDetalleModal from "../components/VentaDetalleModal";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 const METODOS: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
+const TODOS = "__todos__";
 
 export default function HistorialPage() {
   const [ventas, setVentas] = useState<Venta[] | null>(null);
@@ -40,32 +47,40 @@ export default function HistorialPage() {
 
   const nombreCliente = (v: Venta) => v.cliente?.nombre || "Cliente general";
 
-  const inputCls =
-    "font-body text-sm px-3 py-2 rounded-lg outline-none border border-border text-ink bg-white focus:border-accent transition-colors";
-
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <input type="date" className={inputCls} value={fecha} onChange={(e) => setFecha(e.target.value)} />
-        <select className={inputCls} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-          <option value="">Todos los clientes</option>
-          {clientes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nombre}
-            </option>
-          ))}
-        </select>
-        <select className={inputCls} value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)}>
-          <option value="">Todos los métodos</option>
-          {METODOS.map((m) => (
-            <option key={m} value={m} className="capitalize">
-              {m}
-            </option>
-          ))}
-        </select>
+        <Input type="date" className="w-auto" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        <Select value={clienteId || TODOS} onValueChange={(v) => setClienteId(v === TODOS ? "" : v)}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Todos los clientes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TODOS}>Todos los clientes</SelectItem>
+            {clientes.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.nombre}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={metodoPago || TODOS} onValueChange={(v) => setMetodoPago(v === TODOS ? "" : v)}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="Todos los métodos" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TODOS}>Todos los métodos</SelectItem>
+            {METODOS.map((m) => (
+              <SelectItem key={m} value={m} className="capitalize">
+                {m}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {(fecha || clienteId || metodoPago) && (
-          <button
-            className="font-body text-xs text-ink-soft underline"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setFecha("");
               setClienteId("");
@@ -73,43 +88,58 @@ export default function HistorialPage() {
             }}
           >
             Limpiar filtros
-          </button>
+          </Button>
         )}
       </div>
 
       {loadError && (
-        <div className="font-body text-sm text-center py-10 text-warn">
+        <div className="font-body text-sm text-center py-10 text-destructive">
           {loadError} — <button className="underline" onClick={cargar}>reintentar</button>
         </div>
       )}
       {!loadError && ventas === null && (
-        <div className="font-body text-sm text-center py-10 text-ink-soft">Cargando…</div>
-      )}
-      {!loadError && ventas !== null && ventas.length === 0 && (
-        <div className="font-body text-sm text-center py-10 text-ink-soft">No hay ventas que coincidan.</div>
-      )}
-
-      {!loadError && ventas && ventas.length > 0 && (
-        <div className="space-y-2.5">
-          {ventas.map((v) => (
-            <button
-              key={v.id}
-              onClick={() => setDetalle(v)}
-              className="w-full rounded-xl border border-border bg-surface flex items-center justify-between p-3 text-left hover:shadow-sm transition-shadow"
-            >
-              <div>
-                <div className="font-body text-sm font-medium text-ink">{nombreCliente(v)}</div>
-                <div className="font-body text-xs text-ink-soft">
-                  {new Date(v.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })} · {v.metodoPago}
-                </div>
-              </div>
-              <div className="font-mono text-sm font-semibold text-accent">{money(v.total)}</div>
-            </button>
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       )}
+      {!loadError && ventas !== null && ventas.length === 0 && (
+        <div className="font-body text-sm text-center py-10 text-muted-foreground">No hay ventas que coincidan.</div>
+      )}
 
-      {detalle && <VentaDetalleModal venta={detalle} onClose={() => setDetalle(null)} />}
+      {!loadError && ventas && ventas.length > 0 && (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Método</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ventas.map((v) => (
+                <TableRow key={v.id} className="cursor-pointer" onClick={() => setDetalle(v)}>
+                  <TableCell className="font-body text-sm font-medium text-foreground">{nombreCliente(v)}</TableCell>
+                  <TableCell className="font-body text-xs text-muted-foreground">
+                    {new Date(v.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="capitalize">
+                      {v.metodoPago}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-sm font-semibold text-primary">{money(v.total)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <VentaDetalleModal venta={detalle} onClose={() => setDetalle(null)} />
     </div>
   );
 }

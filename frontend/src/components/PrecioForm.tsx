@@ -1,17 +1,18 @@
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import type { Producto } from "../types/producto";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { DialogFooter } from "@/components/ui/dialog";
 
-const inputCls =
-  "w-full font-body text-sm px-3 py-2 rounded-lg outline-none border border-border text-ink bg-white focus:border-accent transition-colors";
-
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
-    <label className="block mb-3">
-      <span className="block font-body text-xs font-medium mb-1 text-ink-soft">{label}</span>
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
       {children}
-      {error && <span className="block font-body text-xs mt-1 text-warn">{error}</span>}
-    </label>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
   );
 }
 
@@ -44,47 +45,34 @@ export default function PrecioForm({
   const err = (key: string) => fieldErrors?.[key]?.[0];
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="mb-4 p-3 rounded-lg bg-bg font-body text-xs text-ink-soft">
-        <span className="text-ink font-medium">{producto.nombre}</span>{" "}
-        <span className="font-mono">{producto.sku}</span>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="p-3 rounded-lg bg-muted font-body text-xs text-muted-foreground">
+        <span className="text-foreground font-medium">{producto.nombre}</span> <span className="font-mono">{producto.sku}</span>
       </div>
 
       <Field label="Precio de compra" error={err("precioCompra")}>
-        <input
-          className={inputCls}
-          value={precioCompra}
-          onChange={(e) => setNumber(setPrecioCompra, e.target.value)}
-          inputMode="decimal"
-          required
-        />
+        <Input value={precioCompra} onChange={(e) => setNumber(setPrecioCompra, e.target.value)} inputMode="decimal" required />
       </Field>
       <Field label="Precio de venta" error={err("precioVenta")}>
-        <input
-          className={inputCls}
-          value={precioVenta}
-          onChange={(e) => setNumber(setPrecioVenta, e.target.value)}
-          inputMode="decimal"
-          required
-        />
+        <Input value={precioVenta} onChange={(e) => setNumber(setPrecioVenta, e.target.value)} inputMode="decimal" required />
       </Field>
 
-      <div className="flex justify-between font-body text-xs text-ink-soft px-1 mb-5">
+      <div className="flex justify-between font-body text-xs text-muted-foreground px-1">
         <span>Margen</span>
-        <span className={`font-mono font-medium ${margen < 0 ? "text-warn" : "text-accent"}`}>
+        <span className={`font-mono font-medium ${margen < 0 ? "text-destructive" : "text-primary"}`}>
           ${margen.toFixed(2)}
           {margenPct !== null && ` (${margenPct.toFixed(0)}%)`}
         </span>
       </div>
 
-      <div className="flex gap-2">
-        <button type="button" onClick={onCancel} className="flex-1 font-body text-sm font-medium py-2.5 rounded-lg border border-border text-ink-soft">
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
-        <button type="submit" disabled={saving} className="flex-1 font-body text-sm font-medium py-2.5 rounded-lg text-white bg-accent disabled:opacity-60">
+        </Button>
+        <Button type="submit" disabled={saving}>
           {saving ? "Guardando..." : "Guardar"}
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }

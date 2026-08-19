@@ -7,8 +7,12 @@ const clientesRoutes = require("./routes/clientes.routes");
 const proveedoresRoutes = require("./routes/proveedores.routes");
 const ventasRoutes = require("./routes/ventas.routes");
 const permisosRoutes = require("./routes/permisos.routes");
+const dashboardRoutes = require("./routes/dashboard.routes");
+const turnosRoutes = require("./routes/turnos.routes");
+const tiposTurnoRoutes = require("./routes/tiposTurno.routes");
 const auth = require("./middleware/auth");
 const requireAdmin = require("./middleware/requireAdmin");
+const requireSeccion = require("./middleware/requireSeccion");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -25,6 +29,9 @@ app.use("/api/clientes", auth, clientesRoutes);
 app.use("/api/proveedores", auth, proveedoresRoutes);
 app.use("/api/ventas", auth, ventasRoutes);
 app.use("/api/permisos", auth, requireAdmin, permisosRoutes);
+app.use("/api/dashboard", auth, dashboardRoutes);
+app.use("/api/turnos", auth, requireSeccion("turnos"), turnosRoutes);
+app.use("/api/tipos-turno", auth, tiposTurnoRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Ruta no encontrada" }));
 app.use(errorHandler);

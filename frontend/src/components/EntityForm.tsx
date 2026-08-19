@@ -1,5 +1,9 @@
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { DialogFooter } from "@/components/ui/dialog";
 
 export type FieldDef = {
   key: string;
@@ -8,16 +12,13 @@ export type FieldDef = {
   type?: "text" | "email" | "tel";
 };
 
-const inputCls =
-  "w-full font-body text-sm px-3 py-2 rounded-lg outline-none border border-border text-ink bg-white focus:border-accent transition-colors";
-
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
-    <label className="block mb-3">
-      <span className="block font-body text-xs font-medium mb-1 text-ink-soft">{label}</span>
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
       {children}
-      {error && <span className="block font-body text-xs mt-1 text-warn">{error}</span>}
-    </label>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
   );
 }
 
@@ -47,27 +48,27 @@ export default function EntityForm({
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="space-y-4">
       {fields.map((f) => (
         <Field key={f.key} label={f.label} error={fieldErrors?.[f.key]?.[0]}>
-          <input
-            className={inputCls}
+          <Input
             type={f.type || "text"}
             value={form[f.key] ?? ""}
             onChange={(e) => set(f.key, e.target.value)}
             placeholder={f.placeholder}
             required={f.key === "nombre"}
+            aria-invalid={!!fieldErrors?.[f.key]}
           />
         </Field>
       ))}
-      <div className="flex gap-2 mt-5">
-        <button type="button" onClick={onCancel} className="flex-1 font-body text-sm font-medium py-2.5 rounded-lg border border-border text-ink-soft">
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
-        <button type="submit" disabled={saving} className="flex-1 font-body text-sm font-medium py-2.5 rounded-lg text-white bg-accent disabled:opacity-60">
+        </Button>
+        <Button type="submit" disabled={saving}>
           {saving ? "Guardando..." : "Guardar"}
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }

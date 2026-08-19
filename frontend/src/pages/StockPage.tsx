@@ -4,6 +4,11 @@ import { Link } from "react-router-dom";
 import { productosApi } from "../api/productos";
 import { ApiError } from "../api/client";
 import type { Producto } from "../types/producto";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function StockPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
@@ -34,74 +39,77 @@ export default function StockPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <p className="font-body text-xs text-ink-soft">
-          Vista de solo lectura. Para ajustar cantidades usa{" "}
-          <Link to="/bodega" className="underline text-accent">
-            Bodega
-          </Link>
-          .
-        </p>
-      </div>
+      <p className="font-body text-xs text-muted-foreground mb-3">
+        Vista de solo lectura. Para ajustar cantidades usa{" "}
+        <Link to="/bodega" className="underline text-primary">
+          Bodega
+        </Link>
+        .
+      </p>
 
-      <div className="flex items-center gap-2 mb-4 mt-3">
+      <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" />
-          <input
-            className="w-full font-body text-sm pl-9 pr-3 py-2 rounded-lg outline-none border border-border text-ink bg-white focus:border-accent transition-colors"
-            placeholder="Buscar por nombre, SKU o categoría"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar por nombre, SKU o categoría" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <button
-          onClick={() => setSoloStockBajo((v) => !v)}
-          className={`flex items-center gap-1.5 font-body text-sm font-medium px-3.5 py-2 rounded-lg shrink-0 border ${
-            soloStockBajo ? "bg-warn-soft text-warn border-warn/30" : "border-border text-ink-soft"
-          }`}
-        >
+        <Button variant={soloStockBajo ? "default" : "outline"} onClick={() => setSoloStockBajo((v) => !v)}>
           <AlertTriangle size={14} /> Stock bajo
-        </button>
+        </Button>
       </div>
 
       {loadError && (
-        <div className="font-body text-sm text-center py-10 text-warn">
+        <div className="font-body text-sm text-center py-10 text-destructive">
           {loadError} — <button className="underline" onClick={cargar}>reintentar</button>
         </div>
       )}
       {!loadError && productos === null && (
-        <div className="font-body text-sm text-center py-10 text-ink-soft">Cargando…</div>
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
       )}
       {!loadError && productos !== null && filtered.length === 0 && (
-        <div className="font-body text-sm text-center py-10 text-ink-soft">No hay productos que coincidan.</div>
+        <div className="font-body text-sm text-center py-10 text-muted-foreground">No hay productos que coincidan.</div>
       )}
 
       {!loadError && filtered.length > 0 && (
-        <div className="space-y-2.5">
-          {filtered.map((p) => {
-            const low = p.stock <= p.stockMinimo;
-            return (
-              <div key={p.id} className="rounded-xl border border-border bg-surface p-4 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-body font-medium text-sm text-ink">{p.nombre}</span>
-                    <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-bg text-ink-soft">{p.sku}</span>
-                    {low && (
-                      <span className="flex items-center gap-1 font-body text-xs px-1.5 py-0.5 rounded bg-warn-soft text-warn">
-                        <AlertTriangle size={11} /> Stock bajo
-                      </span>
-                    )}
-                  </div>
-                  <div className="font-body text-xs mt-0.5 text-ink-soft">
-                    Mínimo: <span className="font-mono">{p.stockMinimo}</span> {p.unidad}
-                  </div>
-                </div>
-                <div className="font-mono text-sm font-semibold shrink-0 text-ink">
-                  {p.stock} <span className="text-ink-soft font-normal">{p.unidad}</span>
-                </div>
-              </div>
-            );
-          })}
+        <div className="rounded-xl border border-border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead>Mínimo</TableHead>
+                <TableHead className="text-right">Stock actual</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((p) => {
+                const low = p.stock <= p.stockMinimo;
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.sku}</span>
+                        {low && (
+                          <Badge variant="warning">
+                            <AlertTriangle size={11} /> Stock bajo
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm text-muted-foreground">
+                      {p.stockMinimo} {p.unidad}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm font-semibold text-foreground">
+                      {p.stock} <span className="text-muted-foreground font-normal">{p.unidad}</span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

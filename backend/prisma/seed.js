@@ -45,6 +45,11 @@ async function main() {
     });
   }
 
+  const tiposTurno = ["Turno Mañana", "Turno Tarde"];
+  for (const nombre of tiposTurno) {
+    await prisma.tipoTurno.upsert({ where: { nombre }, update: {}, create: { nombre } });
+  }
+
   console.log("Seed completado");
   console.log("Usuarios de prueba: admin@inventario.local / admin123, cajero@inventario.local / cajero123");
 }

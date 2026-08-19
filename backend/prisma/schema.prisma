@@ -103,20 +103,54 @@ model Proveedor {
 }
 
 model Venta {
-  id         String      @id @default(uuid())
-  fecha      DateTime    @default(now())
-  clienteId  String?
-  cliente    Cliente?    @relation(fields: [clienteId], references: [id])
-  total      Decimal     @db.Decimal(10, 2)
-  metodoPago String
-  items      VentaItem[]
-  usuarioId  String?
-  usuario    Usuario?    @relation(fields: [usuarioId], references: [id])
+  id          String            @id @default(uuid())
+  fecha       DateTime          @default(now())
+  clienteId   String?
+  cliente     Cliente?          @relation(fields: [clienteId], references: [id])
+  total       Decimal           @db.Decimal(10, 2)
+  metodoPago  String
+  items       VentaItem[]
+  usuarioId   String?
+  usuario     Usuario?          @relation(fields: [usuarioId], references: [id])
   movimientos MovimientoStock[]
+  turnoCajaId String?
+  turnoCaja   TurnoCaja?        @relation(fields: [turnoCajaId], references: [id])
 
   @@index([clienteId])
   @@index([fecha])
+  @@index([turnoCajaId])
   @@map("ventas")
+}
+
+model TipoTurno {
+  id     String      @id @default(uuid())
+  nombre String      @unique
+  activo Boolean     @default(true)
+  turnos TurnoCaja[]
+
+  @@map("tipos_turno")
+}
+
+model TurnoCaja {
+  id                String    @id @default(uuid())
+  tipoTurnoId       String
+  tipoTurno         TipoTurno @relation(fields: [tipoTurnoId], references: [id])
+  estado            String    @default("abierto") // "abierto" | "cerrado"
+  montoInicial      Decimal   @db.Decimal(10, 2)
+  montoContado      Decimal?  @db.Decimal(10, 2)
+  montoEsperado     Decimal?  @db.Decimal(10, 2)
+  diferencia        Decimal?  @db.Decimal(10, 2)
+  notas             String?
+  fechaApertura     DateTime  @default(now())
+  fechaCierre       DateTime?
+  usuarioAperturaId String?
+  usuarioApertura   Usuario?  @relation("TurnosAbiertos", fields: [usuarioAperturaId], references: [id])
+  usuarioCierreId   String?
+  usuarioCierre     Usuario?  @relation("TurnosCerrados", fields: [usuarioCierreId], references: [id])
+  ventas            Venta[]
+
+  @@index([estado])
+  @@map("turnos_caja")
 }
 
 model VentaItem {
@@ -143,6 +177,8 @@ model Usuario {
   ventas           Venta[]
   historialPrecios HistorialPrecio[]
   movimientosStock MovimientoStock[]
+  turnosAbiertos   TurnoCaja[]       @relation("TurnosAbiertos")
+  turnosCerrados   TurnoCaja[]       @relation("TurnosCerrados")
 
   @@map("usuarios")
 }

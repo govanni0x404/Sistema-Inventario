@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import type { Producto, ProductoInput } from "../types/producto";
 import type { Proveedor } from "../types/proveedor";
 import { proveedoresApi } from "../api/proveedores";
-
-const inputCls =
-  "w-full font-body text-sm px-3 py-2 rounded-lg outline-none border border-border text-ink bg-white focus:border-accent transition-colors";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -31,15 +33,17 @@ function toFormState(p?: Producto): FormState {
   };
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
-    <label className="block mb-3">
-      <span className="block font-body text-xs font-medium mb-1 text-ink-soft">{label}</span>
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
       {children}
-      {error && <span className="block font-body text-xs mt-1 text-warn">{error}</span>}
-    </label>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
   );
 }
+
+const SIN_PROVEEDOR = "__none__";
 
 export default function ProductoForm({
   initial,
@@ -80,56 +84,64 @@ export default function ProductoForm({
   const err = (key: string) => fieldErrors?.[key]?.[0];
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="space-y-4">
       {initial && (
-        <div className="flex gap-4 mb-4 p-3 rounded-lg bg-bg font-body text-xs text-ink-soft">
+        <div className="flex gap-4 p-3 rounded-lg bg-muted font-body text-xs text-muted-foreground">
           <span>
-            Stock: <span className="font-mono text-ink">{initial.stock}</span> {initial.unidad}
+            Stock: <span className="font-mono text-foreground">{initial.stock}</span> {initial.unidad}
           </span>
           <span>
-            Precio de compra: <span className="font-mono text-ink">{money(initial.precioCompra)}</span>
+            Precio de compra: <span className="font-mono text-foreground">{money(initial.precioCompra)}</span>
           </span>
-          <span className="ml-auto text-ink-soft/70 italic">Se gestionan en Bodega / Precios</span>
+          <span className="ml-auto italic">Se gestionan en Bodega / Precios</span>
         </div>
       )}
 
       <Field label="SKU" error={err("sku")}>
-        <input className={inputCls} value={form.sku} onChange={(e) => set("sku", e.target.value)} required />
+        <Input value={form.sku} onChange={(e) => set("sku", e.target.value)} required />
       </Field>
       <Field label="Nombre" error={err("nombre")}>
-        <input className={inputCls} value={form.nombre} onChange={(e) => set("nombre", e.target.value)} required />
+        <Input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} required />
       </Field>
       <Field label="Categoría">
-        <input className={inputCls} value={form.categoria} onChange={(e) => set("categoria", e.target.value)} />
+        <Input value={form.categoria} onChange={(e) => set("categoria", e.target.value)} />
       </Field>
       <Field label="Precio de venta" error={err("precioVenta")}>
-        <input className={inputCls} value={form.precioVenta} onChange={(e) => setNumber("precioVenta", e.target.value)} inputMode="decimal" required />
+        <Input value={form.precioVenta} onChange={(e) => setNumber("precioVenta", e.target.value)} inputMode="decimal" required />
       </Field>
       <Field label="Stock mínimo" error={err("stockMinimo")}>
-        <input className={inputCls} value={form.stockMinimo} onChange={(e) => setNumber("stockMinimo", e.target.value)} inputMode="numeric" />
+        <Input value={form.stockMinimo} onChange={(e) => setNumber("stockMinimo", e.target.value)} inputMode="numeric" />
       </Field>
       <Field label="Unidad">
-        <input className={inputCls} value={form.unidad} onChange={(e) => set("unidad", e.target.value)} placeholder="pieza, kg, caja..." />
+        <Input value={form.unidad} onChange={(e) => set("unidad", e.target.value)} placeholder="pieza, kg, caja..." />
       </Field>
       <Field label="Proveedor">
-        <select className={inputCls} value={form.proveedorId} onChange={(e) => set("proveedorId", e.target.value)}>
-          <option value="">— Sin asignar —</option>
-          {proveedores.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nombre}
-            </option>
-          ))}
-        </select>
+        <Select
+          value={form.proveedorId || SIN_PROVEEDOR}
+          onValueChange={(v) => set("proveedorId", v === SIN_PROVEEDOR ? "" : v)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="— Sin asignar —" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SIN_PROVEEDOR}>— Sin asignar —</SelectItem>
+            {proveedores.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.nombre}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </Field>
 
-      <div className="flex gap-2 mt-5">
-        <button type="button" onClick={onCancel} className="flex-1 font-body text-sm font-medium py-2.5 rounded-lg border border-border text-ink-soft">
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
-        </button>
-        <button type="submit" disabled={saving} className="flex-1 font-body text-sm font-medium py-2.5 rounded-lg text-white bg-accent disabled:opacity-60">
+        </Button>
+        <Button type="submit" disabled={saving}>
           {saving ? "Guardando..." : "Guardar"}
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }

@@ -87,6 +87,11 @@ async function crear(req, res) {
   }
 
   const venta = await prisma.$transaction(async (tx) => {
+    const turnoAbierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
+    if (!turnoAbierto) {
+      throw new HttpError(409, "Debes abrir un turno de caja antes de vender");
+    }
+
     const productoIds = [...cantidadPorProducto.keys()];
     const productos = await tx.producto.findMany({ where: { id: { in: productoIds } } });
 
@@ -125,6 +130,7 @@ async function crear(req, res) {
         metodoPago,
         total,
         usuarioId: req.user?.id,
+        turnoCajaId: turnoAbierto.id,
         items: { create: itemsData },
       },
       include: { cliente: { select: { id: true, nombre: true } }, items: true },

@@ -7,7 +7,7 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-bg font-body text-sm text-ink-soft">Cargando…</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-background font-body text-sm text-muted-foreground">Cargando…</div>;
   }
 
   if (!usuario) {
