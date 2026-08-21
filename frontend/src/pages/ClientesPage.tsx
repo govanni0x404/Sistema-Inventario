@@ -125,8 +125,8 @@ export default function ClientesPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-9" placeholder="Buscar por nombre" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
@@ -224,7 +224,7 @@ export default function ClientesPage() {
                             {detalle.ventas.map((v) => (
                               <div key={v.id} className="flex justify-between font-mono text-xs text-muted-foreground">
                                 <span>
-                                  {new Date(v.fecha).toLocaleDateString("es-MX")} · {v.metodoPago} · {v.items.length} ítem(s)
+                                  {new Date(v.fecha).toLocaleDateString("es-MX")} · {v.pagos.map((p) => p.metodoPago).join(" + ")} · {v.items.length} ítem(s)
                                 </span>
                                 <span className="text-primary font-semibold">{money(v.total)}</span>
                               </div>

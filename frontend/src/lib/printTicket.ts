@@ -25,10 +25,23 @@ export function printTicket(venta: Venta) {
           <span>${money(it.subtotal)}</span>
         </div>
         <div class="fila detalle">
-          <span>${it.cantidad} × ${money(it.precioUnitario)}</span>
+          <span>${it.cantidad} × ${money(it.precioUnitario)}${it.descuento > 0 ? ` · desc. ${money(it.descuento)}` : ""}</span>
         </div>`;
     })
     .join("");
+
+  const filaDescuento =
+    venta.descuento > 0
+      ? `
+        <div class="fila"><span>Subtotal</span><span>${money(venta.subtotal)}</span></div>
+        <div class="fila"><span>Descuento</span><span>-${money(venta.descuento)}</span></div>`
+      : "";
+
+  const metodoPagoTexto = venta.esCortesia
+    ? `Cortesía${venta.motivoCortesia ? ` (${escapeHtml(venta.motivoCortesia)})` : ""}`
+    : venta.pagos.length > 1
+      ? venta.pagos.map((p) => `${escapeHtml(p.metodoPago)} ${money(p.monto)}`).join(" + ")
+      : escapeHtml(venta.pagos[0]?.metodoPago ?? "");
 
   const html = `<!doctype html>
 <html lang="es">
@@ -60,10 +73,11 @@ export function printTicket(venta: Venta) {
   <h1>Caja &amp; Inventario</h1>
   <div class="sub">Folio ${folio}<br />${fecha}</div>
   <div class="meta">Cliente: ${cliente}</div>
-  <div class="meta">Método de pago: ${escapeHtml(venta.metodoPago)}</div>
+  <div class="meta">Método de pago: ${metodoPagoTexto}</div>
   <div class="linea"></div>
   ${filas}
   <div class="linea"></div>
+  ${filaDescuento}
   <div class="fila total"><span>TOTAL</span><span>${money(venta.total)}</span></div>
   <div class="footer">¡Gracias por su compra!</div>
   <script>

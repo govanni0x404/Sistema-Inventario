@@ -4,9 +4,20 @@ const bcrypt = require("bcryptjs");
 const prisma = new PrismaClient();
 
 async function main() {
+  const admin = await prisma.rol.upsert({
+    where: { nombre: "admin" },
+    update: {},
+    create: { nombre: "admin", protegido: true },
+  });
+  const cajero = await prisma.rol.upsert({
+    where: { nombre: "cajero" },
+    update: {},
+    create: { nombre: "cajero" },
+  });
+
   const usuarios = [
-    { email: "admin@inventario.local", nombre: "Administrador", password: "admin123", rol: "admin" },
-    { email: "cajero@inventario.local", nombre: "Cajero", password: "cajero123", rol: "cajero" },
+    { email: "admin@inventario.local", nombre: "Administrador", password: "admin123", rolId: admin.id },
+    { email: "cajero@inventario.local", nombre: "Cajero", password: "cajero123", rolId: cajero.id },
   ];
 
   for (const u of usuarios) {

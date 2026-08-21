@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, AlertTriangle } from "lucide-react";
+import { Search, AlertTriangle, Download } from "lucide-react";
 import { Link } from "react-router-dom";
 import { productosApi } from "../api/productos";
 import { ApiError } from "../api/client";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
+import { exportarCsv } from "../lib/exportCsv";
 
 export default function StockPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
@@ -35,11 +36,27 @@ export default function StockPage() {
     if (!productos) return [];
     const term = q.toLowerCase();
     return productos
-      .filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term))
+      .filter((p) => (p.nombre + p.sku + (p.categoria?.nombre || "")).toLowerCase().includes(term))
       .filter((p) => !soloStockBajo || p.stock <= p.stockMinimo);
   }, [productos, q, soloStockBajo]);
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, `${q}-${soloStockBajo}`);
+
+  const exportar = () => {
+    if (filtered.length === 0) return;
+    exportarCsv(
+      `stock-${new Date().toISOString().slice(0, 10)}.csv`,
+      filtered.map((p) => ({
+        SKU: p.sku,
+        Nombre: p.nombre,
+        Categoría: p.categoria?.nombre ?? "",
+        Stock: p.stock,
+        "Stock mínimo": p.stockMinimo,
+        Unidad: p.unidad.nombre,
+        Proveedor: p.proveedor?.nombre ?? "",
+      }))
+    );
+  };
 
   return (
     <div>
@@ -51,13 +68,16 @@ export default function StockPage() {
         .
       </p>
 
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-9" placeholder="Buscar por nombre, SKU o categoría" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <Button variant={soloStockBajo ? "default" : "outline"} onClick={() => setSoloStockBajo((v) => !v)}>
           <AlertTriangle size={14} /> Stock bajo
+        </Button>
+        <Button variant="outline" onClick={exportar} disabled={filtered.length === 0}>
+          <Download size={14} /> Exportar CSV
         </Button>
       </div>
 
@@ -104,10 +124,10 @@ export default function StockPage() {
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-sm text-muted-foreground">
-                      {p.stockMinimo} {p.unidad}
+                      {p.stockMinimo} {p.unidad.nombre}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm font-semibold text-foreground">
-                      {p.stock} <span className="text-muted-foreground font-normal">{p.unidad}</span>
+                      {p.stock} <span className="text-muted-foreground font-normal">{p.unidad.nombre}</span>
                     </TableCell>
                   </TableRow>
                 );

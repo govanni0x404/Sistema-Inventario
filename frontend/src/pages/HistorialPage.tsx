@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { ventasApi } from "../api/ventas";
 import { clientesApi } from "../api/clientes";
 import { turnosApi } from "../api/turnos";
@@ -15,14 +16,33 @@ import { Badge } from "@/components/ui/badge";
 import VentaDetalleModal from "../components/VentaDetalleModal";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
+import { exportarCsv } from "../lib/exportCsv";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 const METODOS: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
 const TODOS = "__todos__";
 
+type RangoPreset = "hoy" | "7d" | "30d" | "90d" | "custom";
+
+const RANGO_LABEL: Record<RangoPreset, string> = {
+  hoy: "Hoy",
+  "7d": "Últimos 7 días",
+  "30d": "Últimos 30 días",
+  "90d": "Últimos 90 días",
+  custom: "Personalizado",
+};
+
 function hoyStr() {
   const d = new Date();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+function haceDias(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - (n - 1));
   const mes = String(d.getMonth() + 1).padStart(2, "0");
   const dia = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${mes}-${dia}`;
@@ -34,17 +54,27 @@ export default function HistorialPage() {
   const [turnos, setTurnos] = useState<TurnoCaja[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<Venta | null>(null);
-  const [fecha, setFecha] = useState(hoyStr());
+  const [rango, setRango] = useState<RangoPreset>("hoy");
+  const [desdeCustom, setDesdeCustom] = useState(hoyStr());
+  const [hastaCustom, setHastaCustom] = useState(hoyStr());
   const [clienteId, setClienteId] = useState("");
   const [metodoPago, setMetodoPago] = useState("");
   const [turnoCajaId, setTurnoCajaId] = useState("");
+
+  const parametrosFecha = () => {
+    if (turnoCajaId) return {};
+    if (rango === "hoy") return { fecha: hoyStr() };
+    if (rango === "custom") return desdeCustom && hastaCustom ? { desde: desdeCustom, hasta: hastaCustom } : { fecha: hoyStr() };
+    const dias = rango === "7d" ? 7 : rango === "30d" ? 30 : 90;
+    return { desde: haceDias(dias), hasta: hoyStr() };
+  };
 
   const cargar = async () => {
     try {
       setLoadError(null);
       const [v, c, t] = await Promise.all([
         ventasApi.listar({
-          fecha: fecha || undefined,
+          ...parametrosFecha(),
           clienteId: clienteId || undefined,
           metodoPago: metodoPago || undefined,
           turnoCajaId: turnoCajaId || undefined,
@@ -63,7 +93,7 @@ export default function HistorialPage() {
   useEffect(() => {
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, clienteId, metodoPago, turnoCajaId]);
+  }, [rango, desdeCustom, hastaCustom, clienteId, metodoPago, turnoCajaId]);
 
   const nombreCliente = (v: Venta) => v.cliente?.nombre || "Cliente general";
 
@@ -75,28 +105,62 @@ export default function HistorialPage() {
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(
     ventas ?? [],
     10,
-    `${fecha}-${clienteId}-${metodoPago}-${turnoCajaId}`
+    `${rango}-${desdeCustom}-${hastaCustom}-${clienteId}-${metodoPago}-${turnoCajaId}`
   );
 
-  const hayFiltros = fecha || clienteId || metodoPago || turnoCajaId;
+  const hayFiltros = rango !== "hoy" || clienteId || metodoPago || turnoCajaId;
+
+  const exportar = () => {
+    if (!ventas || ventas.length === 0) return;
+    exportarCsv(
+      `historial-ventas-${hoyStr()}.csv`,
+      ventas.map((v) => ({
+        Fecha: new Date(v.fecha).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }),
+        Cliente: nombreCliente(v),
+        Turno: v.turnoCaja?.tipoTurno.nombre ?? "",
+        "Método de pago": v.esCortesia ? `Cortesía (${v.motivoCortesia ?? ""})` : v.pagos.map((p) => p.metodoPago).join(" + "),
+        Subtotal: v.subtotal,
+        Descuento: v.descuento,
+        Total: v.total,
+        Devuelta: (v.devoluciones?.length ?? 0) > 0 ? "Sí" : "No",
+      }))
+    );
+  };
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Input
-          type="date"
-          className="w-auto"
-          value={fecha}
-          onChange={(e) => {
-            setFecha(e.target.value);
+        <Select
+          value={rango}
+          onValueChange={(v) => {
+            setRango(v as RangoPreset);
             setTurnoCajaId("");
           }}
-        />
+          disabled={!!turnoCajaId}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(RANGO_LABEL) as RangoPreset[]).map((r) => (
+              <SelectItem key={r} value={r}>
+                {RANGO_LABEL[r]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {rango === "custom" && !turnoCajaId && (
+          <>
+            <Input type="date" className="w-auto" value={desdeCustom} onChange={(e) => setDesdeCustom(e.target.value)} />
+            <span className="font-body text-xs text-muted-foreground">a</span>
+            <Input type="date" className="w-auto" value={hastaCustom} onChange={(e) => setHastaCustom(e.target.value)} />
+          </>
+        )}
         <Select
           value={turnoCajaId || TODOS}
           onValueChange={(v) => {
             setTurnoCajaId(v === TODOS ? "" : v);
-            setFecha("");
+            setRango("hoy");
           }}
         >
           <SelectTrigger className="w-52">
@@ -142,7 +206,7 @@ export default function HistorialPage() {
             variant="ghost"
             size="sm"
             onClick={() => {
-              setFecha("");
+              setRango("hoy");
               setClienteId("");
               setMetodoPago("");
               setTurnoCajaId("");
@@ -151,6 +215,9 @@ export default function HistorialPage() {
             Limpiar filtros
           </Button>
         )}
+        <Button variant="outline" size="sm" onClick={exportar} disabled={!ventas || ventas.length === 0} className="ml-auto">
+          <Download size={14} /> Exportar CSV
+        </Button>
       </div>
 
       {loadError && (
@@ -178,6 +245,7 @@ export default function HistorialPage() {
                 <TableHead>Fecha</TableHead>
                 <TableHead>Turno</TableHead>
                 <TableHead>Método</TableHead>
+                <TableHead></TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
@@ -190,9 +258,20 @@ export default function HistorialPage() {
                   </TableCell>
                   <TableCell className="font-body text-xs text-muted-foreground">{v.turnoCaja?.tipoTurno.nombre ?? "—"}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className="capitalize">
-                      {v.metodoPago}
-                    </Badge>
+                    {v.esCortesia ? (
+                      <Badge variant="warning">Cortesía</Badge>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {v.pagos.map((p) => (
+                          <Badge key={p.id} variant="secondary" className="capitalize">
+                            {p.metodoPago}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {(v.devoluciones?.length ?? 0) > 0 && <Badge variant="destructive">Devuelta</Badge>}
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm font-semibold text-primary">{money(v.total)}</TableCell>
                 </TableRow>
@@ -204,7 +283,14 @@ export default function HistorialPage() {
 
       <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
 
-      <VentaDetalleModal venta={detalle} onClose={() => setDetalle(null)} />
+      <VentaDetalleModal
+        venta={detalle}
+        onClose={() => setDetalle(null)}
+        onCambio={(actualizada) => {
+          setDetalle(actualizada);
+          setVentas((prev) => prev?.map((v) => (v.id === actualizada.id ? actualizada : v)) ?? prev);
+        }}
+      />
     </div>
   );
 }

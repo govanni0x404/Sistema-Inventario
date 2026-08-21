@@ -18,25 +18,48 @@ function serialize(t) {
   };
 }
 
+// El arqueo de caja necesita saber cuánto efectivo entró realmente: una venta puede estar
+// pagada mitad efectivo mitad tarjeta, así que se agrupa por VentaPago (no por Venta), y
+// la cantidad/total de ventas se cuenta aparte sobre Venta para no duplicar por pago.
 async function resumenVentasDeTurno(turnoCajaId) {
-  const grupos = await prisma.venta.groupBy({
-    by: ["metodoPago"],
-    where: { turnoCajaId },
-    _sum: { total: true },
-    _count: true,
-  });
+  const [gruposPago, ventasAgg] = await Promise.all([
+    prisma.ventaPago.groupBy({
+      by: ["metodoPago"],
+      where: { venta: { turnoCajaId } },
+      _sum: { monto: true },
+    }),
+    prisma.venta.aggregate({ where: { turnoCajaId, esCortesia: false }, _sum: { total: true }, _count: true }),
+  ]);
 
   const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
-  let cantidadVentas = 0;
-  let total = 0;
-  for (const g of grupos) {
-    const monto = Number(g._sum.total || 0);
-    porMetodo[g.metodoPago] = monto;
-    cantidadVentas += g._count;
-    total += monto;
+  for (const g of gruposPago) {
+    porMetodo[g.metodoPago] = Number(g._sum.monto || 0);
   }
 
-  return { porMetodo, cantidadVentas, total };
+  return { porMetodo, cantidadVentas: ventasAgg._count, total: Number(ventasAgg._sum.total || 0) };
+}
+
+// Retiros/ingresos de efectivo que no vienen de una venta (pago a proveedor, cambio, etc.).
+async function resumenMovimientosCaja(turnoCajaId) {
+  const grupos = await prisma.movimientoCaja.groupBy({
+    by: ["tipo"],
+    where: { turnoCajaId },
+    _sum: { monto: true },
+  });
+  const porTipo = { retiro: 0, ingreso: 0 };
+  for (const g of grupos) porTipo[g.tipo] = Number(g._sum.monto || 0);
+
+  const movimientos = await prisma.movimientoCaja.findMany({
+    where: { turnoCajaId },
+    include: { usuario: { select: { id: true, nombre: true } } },
+    orderBy: { fecha: "desc" },
+  });
+
+  return {
+    ingresos: porTipo.ingreso,
+    retiros: porTipo.retiro,
+    movimientos: movimientos.map((m) => ({ ...m, monto: Number(m.monto) })),
+  };
 }
 
 // GET /api/turnos?estado=&desde=&hasta=
@@ -65,7 +88,8 @@ async function obtener(req, res) {
   const turno = await prisma.turnoCaja.findUnique({ where: { id: req.params.id }, include: INCLUDE });
   if (!turno) throw new HttpError(404, "Turno no encontrado");
   const resumenVentas = await resumenVentasDeTurno(turno.id);
-  res.json({ ...serialize(turno), resumenVentas });
+  const movimientosCaja = await resumenMovimientosCaja(turno.id);
+  res.json({ ...serialize(turno), resumenVentas, movimientosCaja });
 }
 
 const abrirSchema = z.object({
@@ -115,7 +139,8 @@ async function cerrar(req, res) {
   if (turno.estado !== "abierto") throw new HttpError(409, "Este turno ya está cerrado");
 
   const { porMetodo } = await resumenVentasDeTurno(turno.id);
-  const montoEsperado = Number(turno.montoInicial) + porMetodo.efectivo;
+  const { ingresos, retiros } = await resumenMovimientosCaja(turno.id);
+  const montoEsperado = Number(turno.montoInicial) + porMetodo.efectivo + ingresos - retiros;
   const diferencia = parsed.data.montoContado - montoEsperado;
 
   const actualizado = await prisma.turnoCaja.update({
@@ -133,7 +158,8 @@ async function cerrar(req, res) {
   });
 
   const resumenVentas = await resumenVentasDeTurno(turno.id);
-  res.json({ ...serialize(actualizado), resumenVentas });
+  const movimientosCaja = await resumenMovimientosCaja(turno.id);
+  res.json({ ...serialize(actualizado), resumenVentas, movimientosCaja });
 }
 
 module.exports = { listar, actual, obtener, abrir, cerrar };

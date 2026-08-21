@@ -1,4 +1,7 @@
-export type Rol = "admin" | "cajero";
+// El rol es un string libre gestionado por el catálogo de Roles (admin/cajero son los
+// únicos garantizados a existir siempre; "admin" es protegido). No es una unión fija
+// porque un administrador puede crear roles nuevos desde /roles.
+export type Rol = string;
 
 export type Seccion =
   | "dashboard"
@@ -10,7 +13,8 @@ export type Seccion =
   | "precios"
   | "clientes"
   | "proveedores"
-  | "historial";
+  | "historial"
+  | "consultas";
 
 export interface Usuario {
   id: string;

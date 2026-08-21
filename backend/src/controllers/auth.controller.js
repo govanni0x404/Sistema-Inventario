@@ -4,6 +4,7 @@ const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { sign } = require("../lib/jwt");
 const { permisosDeRol } = require("../lib/permisos");
+const { registrarAuditoria } = require("../lib/auditoria");
 
 const loginSchema = z.object({
   email: z.string().trim().email("Correo inválido"),
@@ -11,7 +12,7 @@ const loginSchema = z.object({
 });
 
 async function serializeUsuario(u) {
-  return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol, permisos: await permisosDeRol(u.rol) };
+  return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol.nombre, permisos: await permisosDeRol(u.rol.nombre) };
 }
 
 // POST /api/auth/login
@@ -22,21 +23,34 @@ async function login(req, res) {
   }
 
   const { email, password } = parsed.data;
-  const usuario = await prisma.usuario.findUnique({ where: { email } });
-  if (!usuario) throw new HttpError(401, "Correo o contraseña incorrectos");
+  const usuario = await prisma.usuario.findUnique({ where: { email }, include: { rol: true } });
+  if (!usuario) {
+    await registrarAuditoria(prisma, { accion: "login_fallido", detalle: `correo no registrado: ${email}` });
+    throw new HttpError(401, "Correo o contraseña incorrectos");
+  }
 
   const valido = await bcrypt.compare(password, usuario.password);
-  if (!valido) throw new HttpError(401, "Correo o contraseña incorrectos");
+  if (!valido) {
+    await registrarAuditoria(prisma, { accion: "login_fallido", usuarioAfectadoId: usuario.id, detalle: "contraseña incorrecta" });
+    throw new HttpError(401, "Correo o contraseña incorrectos");
+  }
 
-  const token = sign({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol });
+  if (!usuario.activo) {
+    await registrarAuditoria(prisma, { accion: "login_fallido", usuarioAfectadoId: usuario.id, detalle: "cuenta desactivada" });
+    throw new HttpError(403, "Tu cuenta está desactivada. Contacta a un administrador.");
+  }
+
+  await registrarAuditoria(prisma, { accion: "login_exitoso", usuarioId: usuario.id });
+  const token = sign({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol.nombre });
   res.json({ token, usuario: await serializeUsuario(usuario) });
 }
 
 // GET /api/auth/me — también revalida permisos en cada carga, así los cambios de un admin
 // aplican sin esperar a que expire el token.
 async function me(req, res) {
-  const usuario = await prisma.usuario.findUnique({ where: { id: req.user.id } });
+  const usuario = await prisma.usuario.findUnique({ where: { id: req.user.id }, include: { rol: true } });
   if (!usuario) throw new HttpError(401, "Sesión inválida");
+  if (!usuario.activo) throw new HttpError(403, "Tu cuenta está desactivada. Contacta a un administrador.");
   res.json(await serializeUsuario(usuario));
 }
 

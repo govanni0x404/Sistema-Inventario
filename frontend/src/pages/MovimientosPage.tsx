@@ -3,9 +3,11 @@ import { toast } from "sonner";
 import { Search, ChevronDown, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import { productosApi } from "../api/productos";
 import { movimientosApi } from "../api/movimientos";
+import { bodegasApi } from "../api/bodegas";
 import { ApiError } from "../api/client";
 import type { Producto } from "../types/producto";
 import type { MovimientoStock, TipoMovimiento } from "../types/movimiento";
+import type { Bodega } from "../types/bodega";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -18,6 +20,7 @@ import { cn } from "@/lib/utils";
 
 export default function MovimientosPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
+  const [bodegas, setBodegas] = useState<Bodega[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -38,12 +41,13 @@ export default function MovimientosPage() {
 
   useEffect(() => {
     cargar();
+    bodegasApi.listar(true).then(setBodegas).catch(() => setBodegas([]));
   }, []);
 
   const filtered = useMemo(() => {
     if (!productos) return [];
     const term = q.toLowerCase();
-    return productos.filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term));
+    return productos.filter((p) => (p.nombre + p.sku + (p.categoria?.nombre || "")).toLowerCase().includes(term));
   }, [productos, q]);
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
@@ -70,7 +74,7 @@ export default function MovimientosPage() {
     cargarHistorial(p.id);
   };
 
-  const guardar = async (data: { cantidad: number; motivo?: string }) => {
+  const guardar = async (data: { cantidad: number; motivo?: string; bodegaId?: string }) => {
     if (!modal) return;
     setSaving(true);
     setFieldErrors(undefined);
@@ -140,7 +144,7 @@ export default function MovimientosPage() {
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-sm text-foreground">
-                      {p.stock} {p.unidad}
+                      {p.stock} {p.unidad.nombre}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1.5 justify-end">
@@ -188,7 +192,7 @@ export default function MovimientosPage() {
                                   )}
                                   <div className="min-w-0">
                                     <div className="text-foreground truncate">
-                                      {m.tipo === "entrada" ? "Entrada" : "Salida"} de {m.cantidad} {p.unidad}
+                                      {m.tipo === "entrada" ? "Entrada" : "Salida"} de {m.cantidad} {p.unidad.nombre}
                                       {m.origen === "venta" && <span className="text-muted-foreground"> · venta</span>}
                                     </div>
                                     <div className="text-muted-foreground truncate">
@@ -224,6 +228,7 @@ export default function MovimientosPage() {
             <MovimientoForm
               producto={modal.producto}
               tipo={modal.tipo}
+              bodegas={bodegas}
               fieldErrors={fieldErrors}
               onCancel={() => setModal(null)}
               onSave={guardar}

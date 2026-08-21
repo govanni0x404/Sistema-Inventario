@@ -11,24 +11,43 @@ datasource db {
 // aquí (siempre tiene acceso total) para que un admin no pueda bloquearse a sí mismo.
 model RolPermiso {
   id        String  @id @default(uuid())
-  rol       String
+  rolId     String
+  rol       Rol     @relation(fields: [rolId], references: [id], onDelete: Cascade)
   seccion   String
   permitido Boolean @default(true)
 
-  @@unique([rol, seccion])
+  @@unique([rolId, seccion])
   @@map("rol_permisos")
+}
+
+// Catálogo de roles asignables a un Usuario. Usuario.rolId y RolPermiso.rolId son FK reales
+// hacia acá (no strings libres) — renombrar un rol se refleja solo en todo lo que lo
+// referencia, sin necesidad de propagar el cambio a mano. "admin" es protegido: no se puede
+// renombrar ni eliminar (todo el sistema compara contra el literal "admin").
+model Rol {
+  id        String       @id @default(uuid())
+  nombre    String       @unique
+  protegido Boolean      @default(false)
+  activo    Boolean      @default(true)
+  usuarios  Usuario[]
+  permisos  RolPermiso[]
+
+  @@map("roles")
 }
 
 model Producto {
   id              String            @id @default(uuid())
   sku             String            @unique
+  codigoBarras    String?           @unique
   nombre          String
-  categoria       String?
+  categoriaId     String?
+  categoria       Categoria?        @relation(fields: [categoriaId], references: [id])
   precioCompra    Decimal           @db.Decimal(10, 2)
   precioVenta     Decimal           @db.Decimal(10, 2)
   stock           Int               @default(0)
   stockMinimo     Int               @default(0)
-  unidad          String            @default("unidad")
+  unidadId        String
+  unidad          Unidad            @relation(fields: [unidadId], references: [id])
   proveedorId     String?
   proveedor       Proveedor?        @relation(fields: [proveedorId], references: [id])
   activo          Boolean           @default(true)
@@ -37,8 +56,14 @@ model Producto {
   ventaItems      VentaItem[]
   historialPrecios HistorialPrecio[]
   movimientos     MovimientoStock[]
+  ventaEnEsperaItems VentaEnEsperaItem[]
+  preciosLista    PrecioLista[]
+  stockBodegas    StockBodega[]
+  historialPreciosLista HistorialPrecioLista[]
 
   @@index([proveedorId])
+  @@index([categoriaId])
+  @@index([unidadId])
   @@map("productos")
 }
 
@@ -63,7 +88,7 @@ model MovimientoStock {
   productoId      String
   producto        Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
   tipo            String   // "entrada" | "salida"
-  origen          String   @default("manual") // "manual" | "venta"
+  origen          String   @default("manual") // "manual" | "venta" | "devolucion" | "transferencia"
   cantidad        Int
   stockResultante Int
   motivo          String?
@@ -71,21 +96,57 @@ model MovimientoStock {
   venta           Venta?   @relation(fields: [ventaId], references: [id])
   usuarioId       String?
   usuario         Usuario? @relation(fields: [usuarioId], references: [id])
+  bodegaId        String?
+  bodega          Bodega?  @relation(fields: [bodegaId], references: [id])
   fecha           DateTime @default(now())
 
   @@index([productoId])
   @@index([ventaId])
+  @@index([bodegaId])
   @@map("movimientos_stock")
 }
 
+// Cada producto tiene una fila de stock por bodega donde existe. Producto.stock es un
+// total cacheado (suma de StockBodega.cantidad), mantenido en la misma transacción que
+// cualquier cambio a StockBodega — así el resto del código (Caja, alertas de stock bajo,
+// etc.) puede seguir leyendo Producto.stock directamente sin sumar en cada consulta.
+model StockBodega {
+  id         String   @id @default(uuid())
+  bodegaId   String
+  bodega     Bodega   @relation(fields: [bodegaId], references: [id], onDelete: Cascade)
+  productoId String
+  producto   Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  cantidad   Int      @default(0)
+
+  @@unique([bodegaId, productoId])
+  @@index([productoId])
+  @@map("stock_bodega")
+}
+
+// La bodega "principal" es donde ocurren las ventas de Caja — está protegida, no se puede
+// desactivar ni eliminar. Otras bodegas son ubicaciones adicionales de almacenamiento;
+// el stock se mueve entre ellas por transferencia (ver bodegas.controller.js).
+model Bodega {
+  id          String            @id @default(uuid())
+  nombre      String            @unique
+  direccion   String?
+  principal   Boolean           @default(false)
+  activo      Boolean           @default(true)
+  stocks      StockBodega[]
+  movimientos MovimientoStock[]
+
+  @@map("bodegas")
+}
+
 model Cliente {
-  id        String   @id @default(uuid())
-  nombre    String
-  telefono  String?
-  email     String?
-  direccion String?
-  creadoEn  DateTime @default(now())
-  ventas    Venta[]
+  id             String          @id @default(uuid())
+  nombre         String
+  telefono       String?
+  email          String?
+  direccion      String?
+  creadoEn       DateTime        @default(now())
+  ventas         Venta[]
+  ventasEnEspera VentaEnEspera[]
 
   @@map("clientes")
 }
@@ -102,13 +163,83 @@ model Proveedor {
   @@map("proveedores")
 }
 
+model Categoria {
+  id        String     @id @default(uuid())
+  nombre    String     @unique
+  activo    Boolean    @default(true)
+  productos Producto[]
+
+  @@map("categorias")
+}
+
+model Unidad {
+  id        String     @id @default(uuid())
+  nombre    String     @unique
+  activo    Boolean    @default(true)
+  productos Producto[]
+
+  @@map("unidades")
+}
+
+// Catálogo de listas de precios (ej. "Público", "Mayorista"). Al crearse, el usuario
+// decide si copia los precios actuales (punto de partida editable) o arranca vacía —
+// eso lo resuelve el controller, no el schema. Un producto sin fila en PrecioLista para
+// una lista dada usa Producto.precioVenta como respaldo.
+model ListaPrecio {
+  id        String                 @id @default(uuid())
+  nombre    String                 @unique
+  activo    Boolean                @default(true)
+  creadoEn  DateTime               @default(now())
+  precios   PrecioLista[]
+  historial HistorialPrecioLista[]
+
+  @@map("listas_precio")
+}
+
+model PrecioLista {
+  id            String      @id @default(uuid())
+  listaPrecioId String
+  listaPrecio   ListaPrecio @relation(fields: [listaPrecioId], references: [id], onDelete: Cascade)
+  productoId    String
+  producto      Producto    @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  precio        Decimal     @db.Decimal(10, 2)
+
+  @@unique([listaPrecioId, productoId])
+  @@index([productoId])
+  @@map("precios_lista")
+}
+
+// Historial de cambios de precio dentro de una lista — mismo patrón que HistorialPrecio
+// para el precio base. precioAnterior/precioNuevo nulos = no tenía override antes / se
+// quitó el override (volvió a usar el precio base de Producto).
+model HistorialPrecioLista {
+  id             String      @id @default(uuid())
+  listaPrecioId  String
+  listaPrecio    ListaPrecio @relation(fields: [listaPrecioId], references: [id])
+  productoId     String
+  producto       Producto    @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  precioAnterior Decimal?    @db.Decimal(10, 2)
+  precioNuevo    Decimal?    @db.Decimal(10, 2)
+  usuarioId      String?
+  usuario        Usuario?    @relation(fields: [usuarioId], references: [id])
+  fecha          DateTime    @default(now())
+
+  @@index([listaPrecioId])
+  @@index([productoId])
+  @@map("historial_precios_lista")
+}
+
 model Venta {
   id          String            @id @default(uuid())
   fecha       DateTime          @default(now())
   clienteId   String?
   cliente     Cliente?          @relation(fields: [clienteId], references: [id])
+  subtotal    Decimal           @db.Decimal(10, 2) @default(0)
+  descuento   Decimal           @db.Decimal(10, 2) @default(0)
   total       Decimal           @db.Decimal(10, 2)
-  metodoPago  String
+  esCortesia    Boolean         @default(false)
+  motivoCortesia String?
+  pagos       VentaPago[]
   items       VentaItem[]
   usuarioId   String?
   usuario     Usuario?          @relation(fields: [usuarioId], references: [id])
@@ -120,7 +251,22 @@ model Venta {
   @@index([clienteId])
   @@index([fecha])
   @@index([turnoCajaId])
+  @@index([usuarioId])
   @@map("ventas")
+}
+
+// Una fila por cada forma de pago usada en el ticket (normalmente 1; hasta 2 si el
+// cliente paga dividido, ej. mitad efectivo + mitad tarjeta). La suma de "monto" siempre
+// debe igualar Venta.total — lo valida el backend al crear la venta.
+model VentaPago {
+  id         String  @id @default(uuid())
+  ventaId    String
+  venta      Venta   @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  metodoPago String
+  monto      Decimal @db.Decimal(10, 2)
+
+  @@index([ventaId])
+  @@map("venta_pagos")
 }
 
 model TipoTurno {
@@ -149,9 +295,28 @@ model TurnoCaja {
   usuarioCierreId   String?
   usuarioCierre     Usuario?  @relation("TurnosCerrados", fields: [usuarioCierreId], references: [id])
   ventas            Venta[]
+  movimientosCaja   MovimientoCaja[]
 
   @@index([estado])
   @@map("turnos_caja")
+}
+
+// Entradas/salidas de efectivo de la caja que no vienen de una venta (pago a proveedor,
+// ingreso de sencillo/cambio). Afectan el monto esperado del arqueo del turno: un
+// "ingreso" lo suma, un "retiro" lo resta.
+model MovimientoCaja {
+  id          String    @id @default(uuid())
+  turnoCajaId String
+  turnoCaja   TurnoCaja @relation(fields: [turnoCajaId], references: [id])
+  tipo        String    // "retiro" | "ingreso"
+  monto       Decimal   @db.Decimal(10, 2)
+  motivo      String
+  usuarioId   String?
+  usuario     Usuario?  @relation(fields: [usuarioId], references: [id])
+  fecha       DateTime  @default(now())
+
+  @@index([turnoCajaId])
+  @@map("movimientos_caja")
 }
 
 model VentaItem {
@@ -162,6 +327,7 @@ model VentaItem {
   producto        Producto         @relation(fields: [productoId], references: [id])
   cantidad        Int
   precioUnitario  Decimal          @db.Decimal(10, 2)
+  descuento       Decimal          @db.Decimal(10, 2) @default(0)
   subtotal        Decimal          @db.Decimal(10, 2)
   devolucionItems DevolucionItem[]
 
@@ -206,13 +372,76 @@ model Usuario {
   nombre           String
   email            String            @unique
   password         String
-  rol              String            @default("cajero")
+  rolId            String
+  rol              Rol               @relation(fields: [rolId], references: [id])
+  activo           Boolean           @default(true)
+  creadoEn         DateTime          @default(now())
   ventas           Venta[]
   historialPrecios HistorialPrecio[]
   movimientosStock MovimientoStock[]
   devoluciones     Devolucion[]
   turnosAbiertos   TurnoCaja[]       @relation("TurnosAbiertos")
   turnosCerrados   TurnoCaja[]       @relation("TurnosCerrados")
+  ventasEnEspera   VentaEnEspera[]
+  movimientosCaja  MovimientoCaja[]
+  auditoriasEjecutadas RegistroAuditoria[] @relation("AuditoriaEjecutor")
+  auditoriasRecibidas  RegistroAuditoria[] @relation("AuditoriaAfectado")
+  historialPreciosLista HistorialPrecioLista[]
 
+  @@index([rolId])
   @@map("usuarios")
+}
+
+// Registro de eventos administrativos/seguridad que no tienen tabla dedicada propia
+// (login, cambios de rol/estado de un usuario, reseteo de contraseña, cambios de
+// permisos, renombre de rol, borrado de una lista de precios). Los eventos de alto
+// volumen del negocio (ventas, stock, caja, precio base de producto) ya tienen su
+// propia tabla (MovimientoStock, MovimientoCaja, HistorialPrecio, Devolucion) — este
+// registro es solo para trazabilidad administrativa, no reemplaza esas.
+model RegistroAuditoria {
+  id                String   @id @default(uuid())
+  accion            String
+  usuarioId         String?
+  usuario           Usuario? @relation("AuditoriaEjecutor", fields: [usuarioId], references: [id])
+  usuarioAfectadoId String?
+  usuarioAfectado   Usuario? @relation("AuditoriaAfectado", fields: [usuarioAfectadoId], references: [id])
+  valorAnterior     String?
+  valorNuevo        String?
+  detalle           String?
+  fecha             DateTime @default(now())
+
+  @@index([usuarioId])
+  @@index([accion])
+  @@index([fecha])
+  @@map("registro_auditoria")
+}
+
+// Snapshot de un carrito "enviado" desde Caja para retomarlo después (ej. mientras se
+// atiende a otro cliente). No descuenta stock ni crea Venta hasta que se recupera y se
+// cobra de verdad — es solo una foto de lo que había en el carrito.
+model VentaEnEspera {
+  id         String              @id @default(uuid())
+  referencia String?
+  clienteId  String?
+  cliente    Cliente?            @relation(fields: [clienteId], references: [id])
+  descuento  Decimal             @db.Decimal(10, 2) @default(0)
+  usuarioId  String?
+  usuario    Usuario?            @relation(fields: [usuarioId], references: [id])
+  creadoEn   DateTime            @default(now())
+  items      VentaEnEsperaItem[]
+
+  @@map("ventas_en_espera")
+}
+
+model VentaEnEsperaItem {
+  id              String        @id @default(uuid())
+  ventaEnEsperaId String
+  ventaEnEspera   VentaEnEspera @relation(fields: [ventaEnEsperaId], references: [id], onDelete: Cascade)
+  productoId      String
+  producto        Producto      @relation(fields: [productoId], references: [id])
+  cantidad        Int
+  descuento       Decimal       @db.Decimal(10, 2) @default(0)
+
+  @@index([ventaEnEsperaId])
+  @@map("venta_en_espera_items")
 }

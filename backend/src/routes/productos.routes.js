@@ -11,6 +11,7 @@ const router = Router();
 router.get("/", asyncHandler(controller.listar));
 router.get("/:id", asyncHandler(controller.obtener));
 router.post("/", requireSeccion("productos"), asyncHandler(controller.crear));
+router.post("/importar", requireSeccion("productos"), asyncHandler(controller.importar));
 router.put("/:id", requireSeccion("productos"), asyncHandler(controller.actualizar));
 router.delete("/:id", requireSeccion("productos"), asyncHandler(controller.eliminar));
 

@@ -1,26 +1,28 @@
 const prisma = require("./prisma");
 
 // Debe reflejar las secciones de navegación del frontend.
-const SECCIONES = ["dashboard", "caja", "turnos", "productos", "stock", "bodega", "precios", "clientes", "proveedores", "historial"];
-
-// Roles a los que aplica el sistema de permisos. "admin" queda fuera a propósito: siempre
-// tiene acceso total, así nunca puede bloquearse a sí mismo (ni a esta misma pantalla).
-const ROLES_CONFIGURABLES = ["cajero"];
+const SECCIONES = ["dashboard", "caja", "turnos", "productos", "stock", "bodega", "precios", "clientes", "proveedores", "historial", "consultas"];
 
 // Sin fila en la tabla = permitido por defecto, así nada se rompe hasta que un admin restrinja algo.
-async function permisosDeRol(rol) {
-  if (rol === "admin") {
+// Recibe el NOMBRE del rol (así lo lleva el JWT) y lo resuelve a su id internamente —
+// RolPermiso.rolId es una FK real, no un string libre.
+async function permisosDeRol(rolNombre) {
+  if (rolNombre === "admin") {
     return Object.fromEntries(SECCIONES.map((s) => [s, true]));
   }
-  const filas = await prisma.rolPermiso.findMany({ where: { rol } });
+  const rol = await prisma.rol.findUnique({ where: { nombre: rolNombre } });
+  if (!rol) return Object.fromEntries(SECCIONES.map((s) => [s, true]));
+  const filas = await prisma.rolPermiso.findMany({ where: { rolId: rol.id } });
   const mapa = Object.fromEntries(filas.map((f) => [f.seccion, f.permitido]));
   return Object.fromEntries(SECCIONES.map((s) => [s, mapa[s] !== undefined ? mapa[s] : true]));
 }
 
-async function tienePermiso(rol, seccion) {
-  if (rol === "admin") return true;
-  const fila = await prisma.rolPermiso.findUnique({ where: { rol_seccion: { rol, seccion } } });
+async function tienePermiso(rolNombre, seccion) {
+  if (rolNombre === "admin") return true;
+  const rol = await prisma.rol.findUnique({ where: { nombre: rolNombre } });
+  if (!rol) return true;
+  const fila = await prisma.rolPermiso.findUnique({ where: { rolId_seccion: { rolId: rol.id, seccion } } });
   return fila ? fila.permitido : true;
 }
 
-module.exports = { SECCIONES, ROLES_CONFIGURABLES, permisosDeRol, tienePermiso };
+module.exports = { SECCIONES, permisosDeRol, tienePermiso };

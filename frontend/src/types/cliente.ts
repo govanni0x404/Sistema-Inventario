@@ -1,4 +1,4 @@
-import type { VentaItem } from "./venta";
+import type { VentaItem, VentaPago } from "./venta";
 
 export interface Cliente {
   id: string;
@@ -14,7 +14,7 @@ export interface ClienteConVentas extends Cliente {
     id: string;
     fecha: string;
     total: number;
-    metodoPago: string;
+    pagos: VentaPago[];
     items: VentaItem[];
   }[];
 }

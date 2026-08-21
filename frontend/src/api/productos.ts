@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Producto, ProductoInput } from "../types/producto";
+import type { Producto, ProductoInput, ImportarResultado } from "../types/producto";
 import type { HistorialPrecio } from "../types/historialPrecio";
 
 export const productosApi = {
@@ -12,4 +12,6 @@ export const productosApi = {
   eliminar: (id: string) =>
     api.delete<(Producto & { _desactivado: true }) | undefined>(`/productos/${id}`),
   historialPrecios: (id: string) => api.get<HistorialPrecio[]>(`/productos/${id}/historial-precios`),
+  importar: (productos: Record<string, unknown>[]) =>
+    api.post<ImportarResultado>("/productos/importar", { productos }),
 };

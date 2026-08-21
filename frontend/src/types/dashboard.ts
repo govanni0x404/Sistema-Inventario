@@ -1,8 +1,9 @@
 export interface DashboardResumen {
+  rango: { desde: string; hasta: string; dias: number };
   kpis: {
     ventasHoy: { total: number; cantidad: number };
-    ventasMes: { total: number; cantidad: number };
-    ticketPromedioMes: number;
+    ventasPeriodo: { total: number; cantidad: number };
+    ticketPromedioPeriodo: number;
     productosActivos: number;
     productosStockBajo: number;
     valorInventario: number;

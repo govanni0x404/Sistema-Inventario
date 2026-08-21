@@ -44,7 +44,7 @@ export default function PreciosPage() {
   const filtered = useMemo(() => {
     if (!productos) return [];
     const term = q.toLowerCase();
-    return productos.filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term));
+    return productos.filter((p) => (p.nombre + p.sku + (p.categoria?.nombre || "")).toLowerCase().includes(term));
   }, [productos, q]);
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);

@@ -29,7 +29,7 @@ async function obtener(req, res) {
     include: {
       ventas: {
         orderBy: { fecha: "desc" },
-        include: { items: true },
+        include: { items: true, pagos: true },
       },
     },
   });
@@ -40,6 +40,7 @@ async function obtener(req, res) {
     ventas: cliente.ventas.map((v) => ({
       ...v,
       total: Number(v.total),
+      pagos: v.pagos.map((p) => ({ ...p, monto: Number(p.monto) })),
       items: v.items.map((it) => ({
         ...it,
         precioUnitario: Number(it.precioUnitario),

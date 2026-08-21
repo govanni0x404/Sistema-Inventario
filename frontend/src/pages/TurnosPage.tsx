@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock, Download } from "lucide-react";
 import { turnosApi } from "../api/turnos";
 import { ApiError } from "../api/client";
 import type { TurnoCaja } from "../types/turno";
 import { useAuth } from "../context/AuthContext";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import TipoTurnoManager from "../components/TipoTurnoManager";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
+import { exportarCsv } from "../lib/exportCsv";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -43,12 +45,36 @@ export default function TurnosPage() {
     }
   };
 
+  const exportar = () => {
+    if (!turnos || turnos.length === 0) return;
+    exportarCsv(
+      `turnos-caja-${new Date().toISOString().slice(0, 10)}.csv`,
+      turnos.map((t) => ({
+        Tipo: t.tipoTurno.nombre,
+        Estado: t.estado,
+        Apertura: new Date(t.fechaApertura).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }),
+        Cierre: t.fechaCierre ? new Date(t.fechaCierre).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "",
+        "Usuario apertura": t.usuarioApertura?.nombre ?? "",
+        "Usuario cierre": t.usuarioCierre?.nombre ?? "",
+        "Monto inicial": t.montoInicial,
+        "Monto contado": t.montoContado ?? "",
+        "Monto esperado": t.montoEsperado ?? "",
+        Diferencia: t.diferencia ?? "",
+      }))
+    );
+  };
+
   return (
     <div className="space-y-6">
       {usuario?.rol === "admin" && <TipoTurnoManager onChange={cargar} />}
 
       <div>
-        <h3 className="font-display text-base font-semibold text-foreground mb-3">Historial de turnos</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-base font-semibold text-foreground">Historial de turnos</h3>
+          <Button variant="outline" size="sm" onClick={exportar} disabled={!turnos || turnos.length === 0}>
+            <Download size={14} /> Exportar CSV
+          </Button>
+        </div>
 
         {loadError && (
           <div className="font-body text-sm text-center py-10 text-destructive">

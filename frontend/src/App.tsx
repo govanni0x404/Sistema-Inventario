@@ -17,6 +17,13 @@ import CajaPage from "./pages/CajaPage";
 import TurnosPage from "./pages/TurnosPage";
 import HistorialPage from "./pages/HistorialPage";
 import PermisosPage from "./pages/PermisosPage";
+import UsuariosPage from "./pages/UsuariosPage";
+import CategoriasPage from "./pages/CategoriasPage";
+import RolesPage from "./pages/RolesPage";
+import ListasPrecioPage from "./pages/ListasPrecioPage";
+import ConsultasPage from "./pages/ConsultasPage";
+import BodegasPage from "./pages/BodegasPage";
+import AuditoriaPage from "./pages/AuditoriaPage";
 
 export default function App() {
   return (
@@ -82,10 +89,26 @@ export default function App() {
               }
             />
             <Route
+              path="/bodegas"
+              element={
+                <RequireSeccion seccion="bodega">
+                  <BodegasPage />
+                </RequireSeccion>
+              }
+            />
+            <Route
               path="/precios"
               element={
                 <RequireSeccion seccion="precios">
                   <PreciosPage />
+                </RequireSeccion>
+              }
+            />
+            <Route
+              path="/listas-precio"
+              element={
+                <RequireSeccion seccion="precios">
+                  <ListasPrecioPage />
                 </RequireSeccion>
               }
             />
@@ -114,10 +137,50 @@ export default function App() {
               }
             />
             <Route
+              path="/consultas"
+              element={
+                <RequireSeccion seccion="consultas">
+                  <ConsultasPage />
+                </RequireSeccion>
+              }
+            />
+            <Route
               path="/permisos"
               element={
                 <RequireAdmin>
                   <PermisosPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/usuarios"
+              element={
+                <RequireAdmin>
+                  <UsuariosPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/categorias"
+              element={
+                <RequireAdmin>
+                  <CategoriasPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/roles"
+              element={
+                <RequireAdmin>
+                  <RolesPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/auditoria"
+              element={
+                <RequireAdmin>
+                  <AuditoriaPage />
                 </RequireAdmin>
               }
             />

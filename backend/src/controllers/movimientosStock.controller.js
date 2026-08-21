@@ -1,11 +1,13 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { bodegaPrincipal, ajustarStockBodega } = require("../lib/stockBodega");
 
 const movimientoSchema = z.object({
   tipo: z.enum(["entrada", "salida"], { errorMap: () => ({ message: "Tipo inválido" }) }),
   cantidad: z.coerce.number().int().positive("La cantidad debe ser mayor a 0"),
   motivo: z.string().trim().optional().nullable(),
+  bodegaId: z.string().uuid().optional(),
 });
 
 // GET /api/productos/:id/movimientos
@@ -28,12 +30,15 @@ async function crear(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { tipo, cantidad, motivo } = parsed.data;
+  const { tipo, cantidad, motivo, bodegaId: bodegaIdSolicitada } = parsed.data;
   const productoId = req.params.id;
 
   const movimiento = await prisma.$transaction(async (tx) => {
     const producto = await tx.producto.findUnique({ where: { id: productoId } });
     if (!producto) throw new HttpError(404, "Producto no encontrado");
+
+    const bodegaId = bodegaIdSolicitada || (await bodegaPrincipal(tx)).id;
+    const delta = tipo === "salida" ? -cantidad : cantidad;
 
     if (tipo === "salida") {
       if (producto.stock < cantidad) {
@@ -50,6 +55,8 @@ async function crear(req, res) {
       await tx.producto.update({ where: { id: productoId }, data: { stock: { increment: cantidad } } });
     }
 
+    await ajustarStockBodega(tx, bodegaId, productoId, delta);
+
     const actualizado = await tx.producto.findUnique({ where: { id: productoId } });
 
     return tx.movimientoStock.create({
@@ -61,6 +68,7 @@ async function crear(req, res) {
         stockResultante: actualizado.stock,
         motivo: motivo || null,
         usuarioId: req.user?.id,
+        bodegaId,
       },
       include: { usuario: { select: { id: true, nombre: true } } },
     });

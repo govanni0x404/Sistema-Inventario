@@ -1,24 +1,37 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { navGroups, adminNavItem } from "./nav-data";
+import { Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { navGroups, adminNavItems, categoriasNavItem } from "./nav-data";
 import { useSidebar } from "@/context/SidebarContext";
 import AppSidebarNav from "./AppSidebarNav";
 import ThemeToggle from "./ThemeToggle";
+import CommandPalette from "./CommandPalette";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { cn } from "@/lib/utils";
 
-const allItems = [...navGroups.flatMap((g) => g.items), adminNavItem];
+const allItems = [...navGroups.flatMap((g) => g.items), categoriasNavItem, ...adminNavItems];
 
 export default function AppLayout() {
   const location = useLocation();
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const noCardWrapper = location.pathname === "/caja" || location.pathname === "/dashboard";
   const activo = allItems.find((t) => t.to === location.pathname);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const pageTitle = useMemo(() => activo?.label ?? "", [activo]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background font-body flex">
@@ -63,6 +76,19 @@ export default function AppLayout() {
           </Breadcrumb>
 
           <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPaletteOpen(true)}
+              className="hidden sm:inline-flex gap-2 text-muted-foreground font-normal"
+            >
+              <Search size={14} />
+              Buscar
+              <kbd className="ml-1 rounded border border-border px-1.5 py-0.5 text-[10px]">Ctrl K</kbd>
+            </Button>
+            <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label="Buscar">
+              <Search size={18} />
+            </Button>
             <ThemeToggle />
           </div>
         </header>
@@ -75,6 +101,8 @@ export default function AppLayout() {
           </div>
         </main>
       </div>
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   );
 }

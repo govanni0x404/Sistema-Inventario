@@ -12,6 +12,22 @@ export interface ResumenVentasTurno {
   total: number;
 }
 
+export interface MovimientoCaja {
+  id: string;
+  turnoCajaId: string;
+  tipo: "retiro" | "ingreso";
+  monto: number;
+  motivo: string;
+  usuario: { id: string; nombre: string } | null;
+  fecha: string;
+}
+
+export interface ResumenMovimientosCaja {
+  ingresos: number;
+  retiros: number;
+  movimientos: MovimientoCaja[];
+}
+
 export interface TurnoCaja {
   id: string;
   tipoTurnoId: string;
@@ -29,6 +45,7 @@ export interface TurnoCaja {
   usuarioCierreId: string | null;
   usuarioCierre: { id: string; nombre: string } | null;
   resumenVentas?: ResumenVentasTurno;
+  movimientosCaja?: ResumenMovimientosCaja;
 }
 
 export type TipoTurnoInput = { nombre: string; activo?: boolean };

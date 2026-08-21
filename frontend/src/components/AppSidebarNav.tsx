@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { navGroups, adminNavItem } from "./nav-data";
+import { navGroups, adminNavItems, categoriasNavItem } from "./nav-data";
 import { useAuth } from "@/context/AuthContext";
 import { productosApi } from "@/api/productos";
 import {
@@ -30,6 +30,7 @@ export default function AppSidebarNav({ collapsed = false, onNavigate }: { colla
           ...g,
           items: g.items.filter((item) => usuario?.rol === "admin" || usuario?.permisos?.[item.seccion] !== false),
         }))
+        .map((g) => (g.label === "Mantención" && usuario?.rol === "admin" ? { ...g, items: [...g.items, categoriasNavItem] } : g))
         .filter((g) => g.items.length > 0),
     [usuario]
   );
@@ -101,11 +102,12 @@ export default function AppSidebarNav({ collapsed = false, onNavigate }: { colla
               </div>
             )}
             <div className="space-y-0.5">
-              {(() => {
-                const Icon = adminNavItem.icon;
+              {adminNavItems.map((item) => {
+                const Icon = item.icon;
                 const link = (
                   <NavLink
-                    to={adminNavItem.to}
+                    key={item.to}
+                    to={item.to}
                     onClick={onNavigate}
                     className={({ isActive }) =>
                       cn(
@@ -118,17 +120,17 @@ export default function AppSidebarNav({ collapsed = false, onNavigate }: { colla
                     }
                   >
                     <Icon size={17} className="shrink-0" />
-                    {!collapsed && <span className="truncate">{adminNavItem.label}</span>}
+                    {!collapsed && <span className="truncate">{item.label}</span>}
                   </NavLink>
                 );
                 if (!collapsed) return link;
                 return (
-                  <Tooltip>
+                  <Tooltip key={item.to}>
                     <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    <TooltipContent side="right">{adminNavItem.label}</TooltipContent>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
                   </Tooltip>
                 );
-              })()}
+              })}
             </div>
           </div>
         )}

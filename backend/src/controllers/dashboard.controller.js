@@ -1,48 +1,40 @@
 const prisma = require("../lib/prisma");
+const { inicioDeDia, finDeDia, claveDia, resolverRango } = require("../lib/rangoFechas");
 
-function inicioDeDia(fecha) {
-  const d = new Date(fecha);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function finDeDia(fecha) {
-  const d = new Date(fecha);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function claveDia(fecha) {
-  return new Date(fecha).toISOString().slice(0, 10);
-}
-
-// GET /api/dashboard — resumen agregado para la pantalla principal.
+// GET /api/dashboard?dias=7|30|90 o ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD — resumen agregado
+// para la pantalla principal. "Ventas de hoy" siempre es el día calendario actual (referencia
+// fija); el resto de las métricas usa el rango seleccionado.
 async function resumen(req, res) {
   const ahora = new Date();
   const hoyInicio = inicioDeDia(ahora);
   const hoyFin = finDeDia(ahora);
-  const mesInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-  const dias = 14;
-  const rangoInicio = inicioDeDia(new Date(ahora.getTime() - (dias - 1) * 86400000));
+  const { rangoInicio, rangoFin, dias } = resolverRango(req.query, ahora);
 
   const [
     ventasHoyAgg,
-    ventasMesAgg,
+    ventasPeriodoAgg,
     productosActivos,
     productos,
     ventasRango,
     ventasPorMetodoRaw,
     itemsTopRaw,
   ] = await Promise.all([
-    prisma.venta.aggregate({ where: { fecha: { gte: hoyInicio, lte: hoyFin } }, _sum: { total: true }, _count: true }),
-    prisma.venta.aggregate({ where: { fecha: { gte: mesInicio } }, _sum: { total: true }, _count: true }),
+    prisma.venta.aggregate({ where: { fecha: { gte: hoyInicio, lte: hoyFin }, esCortesia: false }, _sum: { total: true }, _count: true }),
+    prisma.venta.aggregate({ where: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false }, _sum: { total: true }, _count: true }),
     prisma.producto.count({ where: { activo: true } }),
-    prisma.producto.findMany({ where: { activo: true }, select: { id: true, nombre: true, sku: true, stock: true, stockMinimo: true, precioCompra: true, unidad: true } }),
-    prisma.venta.findMany({ where: { fecha: { gte: rangoInicio } }, select: { fecha: true, total: true } }),
-    prisma.venta.groupBy({ by: ["metodoPago"], where: { fecha: { gte: mesInicio } }, _sum: { total: true } }),
+    prisma.producto.findMany({
+      where: { activo: true },
+      select: { id: true, nombre: true, sku: true, stock: true, stockMinimo: true, precioCompra: true, unidad: { select: { nombre: true } } },
+    }),
+    prisma.venta.findMany({ where: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false }, select: { fecha: true, total: true } }),
+    prisma.ventaPago.groupBy({
+      by: ["metodoPago"],
+      where: { venta: { fecha: { gte: rangoInicio, lte: rangoFin } } },
+      _sum: { monto: true },
+    }),
     prisma.ventaItem.groupBy({
       by: ["productoId"],
-      where: { venta: { fecha: { gte: mesInicio } } },
+      where: { venta: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false } },
       _sum: { cantidad: true, subtotal: true },
       orderBy: { _sum: { subtotal: "desc" } },
       take: 5,
@@ -76,27 +68,28 @@ async function resumen(req, res) {
     subtotal: Number(it._sum.subtotal),
   }));
 
-  const ventasMesCount = ventasMesAgg._count;
-  const ventasMesTotal = Number(ventasMesAgg._sum.total || 0);
+  const ventasPeriodoCount = ventasPeriodoAgg._count;
+  const ventasPeriodoTotal = Number(ventasPeriodoAgg._sum.total || 0);
 
   res.json({
+    rango: { desde: claveDia(rangoInicio), hasta: claveDia(rangoFin), dias },
     kpis: {
       ventasHoy: { total: Number(ventasHoyAgg._sum.total || 0), cantidad: ventasHoyAgg._count },
-      ventasMes: { total: ventasMesTotal, cantidad: ventasMesCount },
-      ticketPromedioMes: ventasMesCount > 0 ? ventasMesTotal / ventasMesCount : 0,
+      ventasPeriodo: { total: ventasPeriodoTotal, cantidad: ventasPeriodoCount },
+      ticketPromedioPeriodo: ventasPeriodoCount > 0 ? ventasPeriodoTotal / ventasPeriodoCount : 0,
       productosActivos,
       productosStockBajo: stockBajo.length,
       valorInventario,
     },
     ventasPorDia: [...porDiaMap.values()],
     ventasPorMetodo: ventasPorMetodoRaw
-      .map((v) => ({ metodoPago: v.metodoPago, total: Number(v._sum.total || 0) }))
+      .map((v) => ({ metodoPago: v.metodoPago, total: Number(v._sum.monto || 0) }))
       .sort((a, b) => b.total - a.total),
     productosTop,
     stockBajo: stockBajo
       .sort((a, b) => a.stock - b.stock)
       .slice(0, 6)
-      .map((p) => ({ id: p.id, nombre: p.nombre, sku: p.sku, stock: p.stock, stockMinimo: p.stockMinimo, unidad: p.unidad })),
+      .map((p) => ({ id: p.id, nombre: p.nombre, sku: p.sku, stock: p.stock, stockMinimo: p.stockMinimo, unidad: p.unidad.nombre })),
   });
 }
 

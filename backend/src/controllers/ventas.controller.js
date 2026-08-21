@@ -1,32 +1,62 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { bodegaPrincipal, ajustarStockBodega } = require("../lib/stockBodega");
 
 const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia"];
 
-const ventaSchema = z.object({
-  clienteId: z.string().uuid().optional().nullable(),
-  metodoPago: z.enum(METODOS_PAGO, { errorMap: () => ({ message: "Método de pago inválido" }) }),
-  items: z
-    .array(
-      z.object({
-        productoId: z.string().uuid(),
-        cantidad: z.coerce.number().int().positive("La cantidad debe ser mayor a 0"),
+const ventaSchema = z
+  .object({
+    clienteId: z.string().uuid().optional().nullable(),
+    esCortesia: z.boolean().optional().default(false),
+    motivoCortesia: z.string().trim().optional().nullable(),
+    pagos: z
+      .array(
+        z.object({
+          metodoPago: z.enum(METODOS_PAGO, { errorMap: () => ({ message: "Método de pago inválido" }) }),
+          monto: z.coerce.number().positive("El monto del pago debe ser mayor a 0"),
+        })
+      )
+      .max(2, "Máximo 2 formas de pago por venta")
+      .refine((pagos) => new Set(pagos.map((p) => p.metodoPago)).size === pagos.length, {
+        message: "No puedes repetir la misma forma de pago",
       })
-    )
-    .min(1, "La venta debe tener al menos un producto"),
-});
+      .optional()
+      .default([]),
+    descuento: z.coerce.number().min(0, "El descuento no puede ser negativo").optional().default(0),
+    items: z
+      .array(
+        z.object({
+          productoId: z.string().uuid(),
+          cantidad: z.coerce.number().int().positive("La cantidad debe ser mayor a 0"),
+          descuento: z.coerce.number().min(0, "El descuento no puede ser negativo").optional().default(0),
+        })
+      )
+      .min(1, "La venta debe tener al menos un producto"),
+  })
+  .refine((data) => data.esCortesia || data.pagos.length >= 1, {
+    message: "Indica al menos una forma de pago",
+    path: ["pagos"],
+  })
+  .refine((data) => !data.esCortesia || (data.motivoCortesia && data.motivoCortesia.trim().length > 0), {
+    message: "Indica el motivo de la cortesía",
+    path: ["motivoCortesia"],
+  });
 
 function serializeVenta(venta) {
   return {
     ...venta,
+    subtotal: Number(venta.subtotal),
+    descuento: Number(venta.descuento),
     total: Number(venta.total),
+    pagos: venta.pagos?.map((p) => ({ ...p, monto: Number(p.monto) })),
     items: venta.items.map((it) => ({
       ...it,
       precioUnitario: Number(it.precioUnitario),
+      descuento: Number(it.descuento),
       subtotal: Number(it.subtotal),
     })),
-    devoluciones: venta.devoluciones?.map(serializeDevolucion),
+    devoluciones: venta.devoluciones?.map((d) => (d.items ? serializeDevolucion(d) : d)),
   };
 }
 
@@ -43,18 +73,35 @@ const DEVOLUCION_INCLUDE = {
   items: true,
 };
 
-// GET /api/ventas?fecha=YYYY-MM-DD&clienteId=&metodoPago=&turnoCajaId=
+const devolucionSchema = z.object({
+  motivo: z.string().optional().nullable(),
+  items: z
+    .array(
+      z.object({
+        ventaItemId: z.string().uuid(),
+        cantidad: z.coerce.number().int().positive("La cantidad debe ser mayor a 0"),
+      })
+    )
+    .min(1, "Debes indicar al menos un producto a devolver"),
+});
+
+// GET /api/ventas?fecha=YYYY-MM-DD&desde=YYYY-MM-DD&hasta=YYYY-MM-DD&clienteId=&metodoPago=&turnoCajaId=
+// `fecha` (un solo día) tiene prioridad sobre `desde`/`hasta` (rango) si ambos llegan.
 async function listar(req, res) {
-  const { fecha, clienteId, metodoPago, turnoCajaId } = req.query;
+  const { fecha, desde, hasta, clienteId, metodoPago, turnoCajaId } = req.query;
   const where = {};
 
   if (clienteId) where.clienteId = String(clienteId);
-  if (metodoPago) where.metodoPago = String(metodoPago);
+  if (metodoPago) where.pagos = { some: { metodoPago: String(metodoPago) } };
   if (turnoCajaId) where.turnoCajaId = String(turnoCajaId);
   if (fecha) {
     const inicio = new Date(`${fecha}T00:00:00`);
     const fin = new Date(`${fecha}T23:59:59.999`);
     where.fecha = { gte: inicio, lte: fin };
+  } else if (desde || hasta) {
+    where.fecha = {};
+    if (desde) where.fecha.gte = new Date(`${desde}T00:00:00`);
+    if (hasta) where.fecha.lte = new Date(`${hasta}T23:59:59.999`);
   }
 
   const ventas = await prisma.venta.findMany({
@@ -63,6 +110,8 @@ async function listar(req, res) {
       cliente: { select: { id: true, nombre: true } },
       items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
       turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
+      devoluciones: { select: { id: true } },
+      pagos: true,
     },
     orderBy: { fecha: "desc" },
   });
@@ -79,6 +128,7 @@ async function obtener(req, res) {
       items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
       turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
       devoluciones: { include: DEVOLUCION_INCLUDE, orderBy: { fecha: "desc" } },
+      pagos: true,
     },
   });
   if (!venta) throw new HttpError(404, "Venta no encontrada");
@@ -91,12 +141,14 @@ async function crear(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { clienteId, metodoPago, items } = parsed.data;
+  const { clienteId, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia } = parsed.data;
 
-  // Sumar cantidades si el mismo producto aparece más de una vez en el ticket.
+  // Sumar cantidades y descuentos si el mismo producto aparece más de una vez en el ticket.
   const cantidadPorProducto = new Map();
+  const descuentoPorProducto = new Map();
   for (const item of items) {
     cantidadPorProducto.set(item.productoId, (cantidadPorProducto.get(item.productoId) || 0) + item.cantidad);
+    descuentoPorProducto.set(item.productoId, (descuentoPorProducto.get(item.productoId) || 0) + item.descuento);
   }
 
   if (clienteId) {
@@ -110,10 +162,11 @@ async function crear(req, res) {
       throw new HttpError(409, "Debes abrir un turno de caja antes de vender");
     }
 
+    const bodega = await bodegaPrincipal(tx);
     const productoIds = [...cantidadPorProducto.keys()];
     const productos = await tx.producto.findMany({ where: { id: { in: productoIds } } });
 
-    let total = 0;
+    let subtotalVenta = 0;
     const itemsData = [];
     const stockResultantePorProducto = new Map();
 
@@ -127,9 +180,14 @@ async function crear(req, res) {
       }
 
       const precioUnitario = Number(producto.precioVenta);
-      const subtotal = precioUnitario * cantidad;
-      total += subtotal;
-      itemsData.push({ productoId, cantidad, precioUnitario, subtotal });
+      const bruto = precioUnitario * cantidad;
+      const descuentoItem = descuentoPorProducto.get(productoId) || 0;
+      if (descuentoItem > bruto) {
+        throw new HttpError(400, `El descuento de "${producto.nombre}" no puede superar su subtotal (${bruto})`);
+      }
+      const subtotal = bruto - descuentoItem;
+      subtotalVenta += subtotal;
+      itemsData.push({ productoId, cantidad, precioUnitario, descuento: descuentoItem, subtotal });
 
       // Guard atómico: si el stock cambió entre la lectura y este punto, la actualización no aplica.
       const resultado = await tx.producto.updateMany({
@@ -139,22 +197,40 @@ async function crear(req, res) {
       if (resultado.count === 0) {
         throw new HttpError(409, `Stock insuficiente para "${producto.nombre}"`);
       }
+      await ajustarStockBodega(tx, bodega.id, productoId, -cantidad);
       stockResultantePorProducto.set(productoId, producto.stock - cantidad);
+    }
+
+    if (descuentoTicket > subtotalVenta) {
+      throw new HttpError(400, `El descuento no puede superar el subtotal del ticket (${subtotalVenta})`);
+    }
+    const total = subtotalVenta - descuentoTicket;
+
+    if (!esCortesia) {
+      const sumaPagos = pagos.reduce((s, p) => s + p.monto, 0);
+      if (Math.abs(sumaPagos - total) > 0.01) {
+        throw new HttpError(400, `La suma de los pagos (${sumaPagos.toFixed(2)}) no coincide con el total (${total.toFixed(2)})`);
+      }
     }
 
     const ventaCreada = await tx.venta.create({
       data: {
         clienteId: clienteId || null,
-        metodoPago,
+        subtotal: subtotalVenta,
+        descuento: descuentoTicket,
         total,
+        esCortesia,
+        motivoCortesia: esCortesia ? motivoCortesia.trim() : null,
         usuarioId: req.user?.id,
         turnoCajaId: turnoAbierto.id,
         items: { create: itemsData },
+        ...(esCortesia ? {} : { pagos: { create: pagos.map((p) => ({ metodoPago: p.metodoPago, monto: p.monto })) } }),
       },
       include: {
         cliente: { select: { id: true, nombre: true } },
         items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
         turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
+        pagos: true,
       },
     });
 
@@ -169,6 +245,7 @@ async function crear(req, res) {
           stockResultante: stockResultantePorProducto.get(item.productoId),
           ventaId: ventaCreada.id,
           usuarioId: req.user?.id,
+          bodegaId: bodega.id,
         },
       });
     }
@@ -179,4 +256,83 @@ async function crear(req, res) {
   res.status(201).json(serializeVenta(venta));
 }
 
-module.exports = { listar, obtener, crear };
+// POST /api/ventas/:id/devolucion — devuelve items (total o parcial) de una venta,
+// restaura stock y deja registro de auditoría. Venta.total original nunca se modifica.
+async function crearDevolucion(req, res) {
+  const parsed = devolucionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
+  }
+  const { motivo, items } = parsed.data;
+  const ventaId = req.params.id;
+
+  const devolucion = await prisma.$transaction(async (tx) => {
+    const venta = await tx.venta.findUnique({
+      where: { id: ventaId },
+      include: { items: { include: { devolucionItems: true } } },
+    });
+    if (!venta) throw new HttpError(404, "Venta no encontrada");
+
+    const bodega = await bodegaPrincipal(tx);
+    let total = 0;
+    const itemsData = [];
+    const stockResultantePorProducto = new Map();
+
+    for (const { ventaItemId, cantidad } of items) {
+      const ventaItem = venta.items.find((it) => it.id === ventaItemId);
+      if (!ventaItem) throw new HttpError(404, `Producto de venta no encontrado (${ventaItemId})`);
+
+      const yaDevuelto = ventaItem.devolucionItems.reduce((sum, di) => sum + di.cantidad, 0);
+      const disponible = ventaItem.cantidad - yaDevuelto;
+      if (cantidad > disponible) {
+        throw new HttpError(409, `Cantidad a devolver excede lo disponible (disponible: ${disponible})`);
+      }
+
+      const subtotal = Number(ventaItem.precioUnitario) * cantidad;
+      total += subtotal;
+      itemsData.push({ ventaItemId, cantidad, subtotal, productoId: ventaItem.productoId });
+
+      const producto = await tx.producto.update({
+        where: { id: ventaItem.productoId },
+        data: { stock: { increment: cantidad } },
+      });
+      await ajustarStockBodega(tx, bodega.id, ventaItem.productoId, cantidad);
+      stockResultantePorProducto.set(ventaItem.productoId, producto.stock);
+    }
+
+    const devolucionCreada = await tx.devolucion.create({
+      data: {
+        ventaId,
+        motivo: motivo || null,
+        total,
+        usuarioId: req.user?.id,
+        items: {
+          create: itemsData.map(({ ventaItemId, cantidad, subtotal }) => ({ ventaItemId, cantidad, subtotal })),
+        },
+      },
+      include: DEVOLUCION_INCLUDE,
+    });
+
+    // Registro de auditoría: la devolución también deja su rastro en movimientos de stock.
+    for (const item of itemsData) {
+      await tx.movimientoStock.create({
+        data: {
+          productoId: item.productoId,
+          tipo: "entrada",
+          origen: "devolucion",
+          cantidad: item.cantidad,
+          stockResultante: stockResultantePorProducto.get(item.productoId),
+          ventaId,
+          usuarioId: req.user?.id,
+          bodegaId: bodega.id,
+        },
+      });
+    }
+
+    return devolucionCreada;
+  });
+
+  res.status(201).json(serializeDevolucion(devolucion));
+}
+
+module.exports = { listar, obtener, crear, crearDevolucion };

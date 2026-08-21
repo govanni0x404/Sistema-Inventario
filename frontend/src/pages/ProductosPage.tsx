@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Search, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, AlertTriangle, Upload } from "lucide-react";
 import { productosApi } from "../api/productos";
 import { ApiError } from "../api/client";
 import type { Producto, ProductoInput } from "../types/producto";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ProductoForm from "../components/ProductoForm";
+import ImportarProductosDialog from "../components/ImportarProductosDialog";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 
@@ -27,6 +28,7 @@ export default function ProductosPage() {
   const [deleteTarget, setDeleteTarget] = useState<Producto | null>(null);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]> | undefined>();
+  const [importando, setImportando] = useState(false);
 
   const cargar = async () => {
     try {
@@ -45,7 +47,7 @@ export default function ProductosPage() {
   const filtered = useMemo(() => {
     if (!productos) return [];
     const term = q.toLowerCase();
-    return productos.filter((p) => (p.nombre + p.sku + (p.categoria || "")).toLowerCase().includes(term));
+    return productos.filter((p) => (p.nombre + p.sku + (p.categoria?.nombre || "")).toLowerCase().includes(term));
   }, [productos, q]);
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
@@ -97,8 +99,8 @@ export default function ProductosPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
@@ -107,6 +109,9 @@ export default function ProductosPage() {
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
+        <Button variant="outline" onClick={() => setImportando(true)}>
+          <Upload size={16} /> Importar
+        </Button>
         <Button
           onClick={() => {
             setFieldErrors(undefined);
@@ -167,9 +172,9 @@ export default function ProductosPage() {
                         <div className="font-body text-xs text-muted-foreground mt-0.5">{p.proveedor.nombre}</div>
                       )}
                     </TableCell>
-                    <TableCell className="font-body text-sm text-muted-foreground">{p.categoria || "—"}</TableCell>
+                    <TableCell className="font-body text-sm text-muted-foreground">{p.categoria?.nombre || "—"}</TableCell>
                     <TableCell className="font-mono text-sm text-foreground">
-                      {p.stock} <span className="text-muted-foreground">{p.unidad}</span>
+                      {p.stock} <span className="text-muted-foreground">{p.unidad.nombre}</span>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm font-semibold text-primary">
                       {money(p.precioVenta)}
@@ -232,6 +237,8 @@ export default function ProductosPage() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
       />
+
+      {importando && <ImportarProductosDialog onClose={() => setImportando(false)} onImportado={cargar} />}
     </div>
   );
 }
