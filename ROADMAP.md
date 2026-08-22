@@ -617,6 +617,81 @@ catálogo de bodegas nuevo.
   `/categorias` ahora que salió de `adminNavItems`. `npx tsc -b --noEmit` y
   `npx vite build` limpios.
 
+## Ronda 6 — Seguridad de login + reportes con márgenes
+
+Pedido del usuario (23-08-2026 aprox., sesión siguiente a la Ronda 5): "qué podemos
+mejorar o agregar al proyecto?". Se ofrecieron 4 direcciones (desplegar a producción,
+seguridad de login, reportes/exportación, notificaciones); el usuario eligió **seguridad
+de login** y **reportes y exportación** (despliegue a producción queda para más
+adelante), con exportación en **CSV** y **sí** incluir gráficos de margen/ganancia por
+producto.
+
+- [x] **R6.1. Bloqueo de cuenta tras intentos fallidos de login** — el sistema ya tenía
+      rate limiting por IP en `/api/auth/login` (`loginLimiter`, 10 intentos/15min,
+      de una ronda anterior) pero nada protegía una cuenta puntual si el ataque venía
+      repartido entre varias IPs. `auth.controller.js` `login()` ahora cuenta, antes de
+      comparar la contraseña, cuántos `RegistroAuditoria` con `accion: "login_fallido"`,
+      `usuarioAfectadoId` de ese usuario y `detalle: "contraseña incorrecta"` hay en los
+      últimos 15 minutos (`LOCKOUT_VENTANA_MIN`); con 5 o más (`LOCKOUT_INTENTOS`)
+      rechaza el intento con 429 **sin comparar la contraseña**, incluso si es correcta,
+      y registra un nuevo evento `login_bloqueado` (distinto de `login_fallido`, para
+      que en Auditoría se distinga un intento con contraseña mala de un intento
+      rebotado por el bloqueo). **Sin tabla ni columna nueva** — se apoya por completo en
+      `RegistroAuditoria` (R5.2): el bloqueo se levanta solo cuando los intentos salen
+      de la ventana de 15 minutos, no hay estado que resetear a mano. Tests nuevos:
+      `authLockout.test.js` (5 fallos seguidos de un 6to intento con la contraseña
+      correcta → 429) y `authLockoutAislado.test.js` (bloquear una cuenta no afecta a
+      otra) — **separados en dos archivos a propósito**: cada archivo de Jest reinicia
+      el store en memoria del rate limiter de IP, pero los tests dentro de un mismo
+      archivo lo comparten, así que juntar ambos escenarios en un archivo acumulaba
+      intentos suficientes para disparar el límite de IP (10/15min) en vez del de
+      cuenta que se quería probar. 57/57 tests verdes. Probado con curl contra la BD
+      real: usuario de prueba creado vía `POST /api/usuarios`, 5 logins con contraseña
+      mala (401 cada uno), 6to intento con la contraseña correcta → 429 con el mensaje
+      de bloqueo; confirmado en `RegistroAuditoria` que quedaron 6 filas (5
+      `login_fallido` + 1 `login_bloqueado`); usuario y filas de auditoría de prueba
+      eliminados directo por Prisma al terminar (no existe `DELETE /api/usuarios/:id`
+      en la API — los usuarios reales se desactivan, no se borran; este sí se borró por
+      ser enteramente de prueba).
+
+- [x] **R6.2. Reportes — exportación CSV y márgenes por producto** — la exportación CSV
+      ya existía en Historial/Stock/Turnos (`lib/exportCsv.ts`, con BOM para que Excel
+      detecte UTF-8 correctamente); lo que faltaba era en los 3 reportes de
+      `ConsultasPage.tsx` que no la tenían (Productos más vendidos, Ventas por usuario,
+      Ventas por forma de pago) — cada uno ganó un botón "Exportar CSV" junto al
+      selector de rango, reusando `exportarCsv()`, deshabilitado sin datos.
+      Nuevo reporte **Márgenes por producto**: `consultas.controller.js`
+      `productosMargen()` (`GET /api/consultas/productos-margen`) agrupa `VentaItem`
+      por producto en el rango (excluyendo cortesías, igual que `productosTop`), y
+      calcula `ingreso` (suma de subtotal), `costo` (`Producto.precioCompra` **actual**
+      × cantidad — documentado en el código y en la UI que no es el costo histórico al
+      momento de cada venta, sería necesario cruzar con `HistorialPrecio` por fecha;
+      aproximación razonable para un reporte gerencial, no una cifra contable exacta),
+      `margen` y `margenPct`, ordenado por margen descendente. Frontend: nueva pestaña
+      "Márgenes por producto" en Consultas — **se evaluó agregar `recharts` pero se
+      descartó**: el Dashboard ya tiene un patrón propio de gráficos hechos a mano
+      (`MagnitudeBarChart`, `SalesLineChart`, sin librería, un solo color —
+      `var(--primary)` — sin paleta categórica) y la paleta `--chart-1..5` del tema no
+      pasa el validador de contraste categórico del skill de dataviz (colores
+      demasiado desaturados para distinguirse por color solo); en vez de introducir una
+      paleta nueva que chocara con la identidad visual ya confirmada por el usuario
+      ("no rediseño de fondo", Ronda 5), se reusó `MagnitudeBarChart` tal cual —
+      barras de magnitud único (el margen en dinero), con ingreso/costo/margen% como
+      subtítulo de cada barra, más una tabla debajo con el detalle completo — mismo
+      patrón que ya usa el Dashboard, cero dependencias nuevas. `recharts` se instaló y
+      se desinstaló en la misma sesión al notar el desajuste, no quedó en
+      `package.json`. Tests nuevos `consultas.test.js` (no existía archivo de test para
+      este controller): calcula ingreso/costo/margen correctamente a partir del precio
+      de compra actual, y excluye ventas de cortesía. 57/57 tests verdes (incluye R6.1).
+      `npx tsc -b --noEmit` y `npx vite build` limpios. Probado con curl contra la BD
+      real: `GET /api/consultas/productos-margen?dias=90` devuelve 5 productos con
+      ingreso/costo/margen coherentes con las ventas sintéticas existentes (ej. Arroz
+      1kg: 35 unidades, ingreso $875, costo $630, margen $245 = 28%) — sin datos de
+      prueba que limpiar, fue solo lectura.
+
+**Estado: Ronda 6 completa (2/2) — cerrada el 2026-08-22.** Pendiente (explícitamente
+pospuesto por el usuario, no descartado): desplegar a producción.
+
 ## Notas de contexto (para no tener que re-derivar)
 
 - Stack: backend Express + Prisma + Postgres (`backend/`), frontend Vite + React +

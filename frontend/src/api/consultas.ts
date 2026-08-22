@@ -2,6 +2,7 @@ import { api } from "./client";
 import type {
   ConsultaParams,
   ProductosTopResponse,
+  ProductosMargenResponse,
   VentasPorMetodoResponse,
   VentasPorUsuarioResponse,
 } from "../types/consulta";
@@ -24,4 +25,6 @@ export const consultasApi = {
     api.get<ProductosTopResponse>(`/consultas/productos-top${qs(params, limite ? { limite } : undefined)}`),
   ventasPorMetodo: (params?: ConsultaParams) => api.get<VentasPorMetodoResponse>(`/consultas/ventas-por-metodo${qs(params)}`),
   ventasPorUsuario: (params?: ConsultaParams) => api.get<VentasPorUsuarioResponse>(`/consultas/ventas-por-usuario${qs(params)}`),
+  productosMargen: (params?: ConsultaParams, limite?: number) =>
+    api.get<ProductosMargenResponse>(`/consultas/productos-margen${qs(params, limite ? { limite } : undefined)}`),
 };

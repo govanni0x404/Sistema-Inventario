@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
 import { consultasApi } from "../api/consultas";
-import type { ProductoTop, VentasPorMetodoItem, VentasPorUsuarioItem } from "../types/consulta";
+import type { ProductoTop, ProductoMargen, VentasPorMetodoItem, VentasPorUsuarioItem } from "../types/consulta";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import RangoFechasSelector from "../components/RangoFechasSelector";
 import type { RangoPreset } from "../components/RangoFechasSelector";
+import { exportarCsv } from "../lib/exportCsv";
+import MagnitudeBarChart from "../components/dashboard/MagnitudeBarChart";
 import HistorialPage from "./HistorialPage";
 import TurnosPage from "./TurnosPage";
 
@@ -38,9 +42,22 @@ function ProductosTopReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.rango, r.desdeCustom, r.hastaCustom]);
 
+  const exportar = () => {
+    if (!productos || productos.length === 0) return;
+    exportarCsv(
+      `productos-mas-vendidos-${hoyStr()}.csv`,
+      productos.map((p) => ({ Producto: p.nombre, SKU: p.sku, Unidades: p.cantidad, "Monto vendido": p.subtotal }))
+    );
+  };
+
   return (
     <div className="space-y-4">
-      <RangoFechasSelector {...r} />
+      <div className="flex flex-wrap items-center gap-2">
+        <RangoFechasSelector {...r} />
+        <Button variant="outline" size="sm" onClick={exportar} disabled={!productos || productos.length === 0} className="ml-auto">
+          <Download size={14} /> Exportar CSV
+        </Button>
+      </div>
       {productos === null && (
         <div className="space-y-2">
           {[...Array(5)].map((_, i) => (
@@ -93,9 +110,27 @@ function VentasPorUsuarioReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.rango, r.desdeCustom, r.hastaCustom]);
 
+  const exportar = () => {
+    if (!usuarios || usuarios.length === 0) return;
+    exportarCsv(
+      `ventas-por-usuario-${hoyStr()}.csv`,
+      usuarios.map((u) => ({
+        Usuario: u.nombre,
+        Ventas: u.cantidadVentas,
+        Cortesías: u.cantidadCortesias,
+        "Total vendido": u.total,
+      }))
+    );
+  };
+
   return (
     <div className="space-y-4">
-      <RangoFechasSelector {...r} />
+      <div className="flex flex-wrap items-center gap-2">
+        <RangoFechasSelector {...r} />
+        <Button variant="outline" size="sm" onClick={exportar} disabled={!usuarios || usuarios.length === 0} className="ml-auto">
+          <Download size={14} /> Exportar CSV
+        </Button>
+      </div>
       {usuarios === null && (
         <div className="space-y-2">
           {[...Array(4)].map((_, i) => (
@@ -147,9 +182,22 @@ function VentasPorMetodoReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.rango, r.desdeCustom, r.hastaCustom]);
 
+  const exportar = () => {
+    if (!metodos || metodos.length === 0) return;
+    exportarCsv(
+      `ventas-por-metodo-${hoyStr()}.csv`,
+      metodos.map((m) => ({ "Método de pago": m.metodoPago, "Cantidad de pagos": m.cantidad, Total: m.total }))
+    );
+  };
+
   return (
     <div className="space-y-4">
-      <RangoFechasSelector {...r} />
+      <div className="flex flex-wrap items-center gap-2">
+        <RangoFechasSelector {...r} />
+        <Button variant="outline" size="sm" onClick={exportar} disabled={!metodos || metodos.length === 0} className="ml-auto">
+          <Download size={14} /> Exportar CSV
+        </Button>
+      </div>
       {metodos === null && (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
@@ -186,6 +234,102 @@ function VentasPorMetodoReport() {
   );
 }
 
+function ProductosMargenReport() {
+  const r = useRango();
+  const [productos, setProductos] = useState<ProductoMargen[] | null>(null);
+
+  useEffect(() => {
+    setProductos(null);
+    consultasApi
+      .productosMargen(r.params, 20)
+      .then((res) => setProductos(res.productos))
+      .catch(() => toast.error("No se pudo cargar el reporte"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [r.rango, r.desdeCustom, r.hastaCustom]);
+
+  const exportar = () => {
+    if (!productos || productos.length === 0) return;
+    exportarCsv(
+      `margen-por-producto-${hoyStr()}.csv`,
+      productos.map((p) => ({
+        Producto: p.nombre,
+        SKU: p.sku,
+        Unidades: p.cantidad,
+        Ingreso: p.ingreso,
+        Costo: p.costo,
+        Margen: p.margen,
+        "Margen %": p.margenPct.toFixed(1),
+      }))
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <RangoFechasSelector {...r} />
+        <Button variant="outline" size="sm" onClick={exportar} disabled={!productos || productos.length === 0} className="ml-auto">
+          <Download size={14} /> Exportar CSV
+        </Button>
+      </div>
+      <p className="font-body text-xs text-muted-foreground">
+        El costo usa el precio de compra actual de cada producto, no el vigente al momento de cada venta.
+      </p>
+      {productos === null && (
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      )}
+      {productos && productos.length === 0 && (
+        <div className="font-body text-sm text-center py-10 text-muted-foreground">No hay ventas en este periodo.</div>
+      )}
+      {productos && productos.length > 0 && (
+        <>
+          <MagnitudeBarChart
+            items={productos.map((p) => ({
+              key: p.productoId,
+              label: p.nombre,
+              value: p.margen,
+              sublabel: `Ingreso ${money(p.ingreso)} · Costo ${money(p.costo)} · Margen ${p.margenPct.toFixed(1)}%`,
+            }))}
+            formatValue={money}
+          />
+          <div className="rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Producto</TableHead>
+                  <TableHead className="text-right">Unidades</TableHead>
+                  <TableHead className="text-right">Ingreso</TableHead>
+                  <TableHead className="text-right">Costo</TableHead>
+                  <TableHead className="text-right">Margen</TableHead>
+                  <TableHead className="text-right">Margen %</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {productos.map((p) => (
+                  <TableRow key={p.productoId}>
+                    <TableCell>
+                      <div className="font-body text-sm font-medium text-foreground">{p.nombre}</div>
+                      <div className="font-mono text-xs text-muted-foreground">{p.sku}</div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm text-foreground">{p.cantidad}</TableCell>
+                    <TableCell className="text-right font-mono text-sm text-foreground">{money(p.ingreso)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm text-muted-foreground">{money(p.costo)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm font-semibold text-primary">{money(p.margen)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm text-foreground">{p.margenPct.toFixed(1)}%</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ConsultasPage() {
   return (
     <Tabs defaultValue="detalle-venta">
@@ -195,6 +339,7 @@ export default function ConsultasPage() {
         <TabsTrigger value="turnos">Cierre de turnos</TabsTrigger>
         <TabsTrigger value="por-usuario">Ventas por usuario</TabsTrigger>
         <TabsTrigger value="por-metodo">Ventas por forma de pago</TabsTrigger>
+        <TabsTrigger value="margenes">Márgenes por producto</TabsTrigger>
       </TabsList>
 
       <TabsContent value="detalle-venta">
@@ -211,6 +356,9 @@ export default function ConsultasPage() {
       </TabsContent>
       <TabsContent value="por-metodo">
         <VentasPorMetodoReport />
+      </TabsContent>
+      <TabsContent value="margenes">
+        <ProductosMargenReport />
       </TabsContent>
     </Tabs>
   );

@@ -11,6 +11,14 @@ const loginSchema = z.object({
   password: z.string().min(1, "La contraseña es obligatoria"),
 });
 
+// Bloqueo por cuenta (distinto del rate limit por IP en auth.routes.js): si una cuenta
+// puntual acumula demasiadas contraseñas incorrectas en la ventana, se bloquea sin
+// importar desde qué IP venga el intento. Se apoya en RegistroAuditoria (ya guarda cada
+// login_fallido con usuarioAfectadoId) — sin tabla ni columna nueva. El bloqueo se
+// levanta solo cuando los intentos salen de la ventana (no hay estado que resetear).
+const LOCKOUT_INTENTOS = 5;
+const LOCKOUT_VENTANA_MIN = 15;
+
 async function serializeUsuario(u) {
   return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol.nombre, permisos: await permisosDeRol(u.rol.nombre) };
 }
@@ -27,6 +35,24 @@ async function login(req, res) {
   if (!usuario) {
     await registrarAuditoria(prisma, { accion: "login_fallido", detalle: `correo no registrado: ${email}` });
     throw new HttpError(401, "Correo o contraseña incorrectos");
+  }
+
+  const ventanaInicio = new Date(Date.now() - LOCKOUT_VENTANA_MIN * 60 * 1000);
+  const intentosFallidos = await prisma.registroAuditoria.count({
+    where: {
+      accion: "login_fallido",
+      usuarioAfectadoId: usuario.id,
+      detalle: "contraseña incorrecta",
+      fecha: { gte: ventanaInicio },
+    },
+  });
+  if (intentosFallidos >= LOCKOUT_INTENTOS) {
+    await registrarAuditoria(prisma, {
+      accion: "login_bloqueado",
+      usuarioAfectadoId: usuario.id,
+      detalle: `bloqueado tras ${intentosFallidos} intentos fallidos en ${LOCKOUT_VENTANA_MIN} min`,
+    });
+    throw new HttpError(429, "Demasiados intentos fallidos. Esta cuenta está bloqueada temporalmente, intenta de nuevo en unos minutos.");
   }
 
   const valido = await bcrypt.compare(password, usuario.password);

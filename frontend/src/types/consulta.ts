@@ -40,4 +40,20 @@ export interface VentasPorUsuarioResponse {
   usuarios: VentasPorUsuarioItem[];
 }
 
+export interface ProductoMargen {
+  productoId: string;
+  nombre: string;
+  sku: string;
+  cantidad: number;
+  ingreso: number;
+  costo: number;
+  margen: number;
+  margenPct: number;
+}
+
+export interface ProductosMargenResponse {
+  rango: RangoConsulta;
+  productos: ProductoMargen[];
+}
+
 export type ConsultaParams = { dias?: number; desde?: string; hasta?: string };

@@ -90,4 +90,49 @@ async function ventasPorUsuario(req, res) {
   res.json({ rango: { desde: claveDia(rangoInicio), hasta: claveDia(rangoFin) }, usuarios: filas });
 }
 
-module.exports = { productosTop, ventasPorMetodo, ventasPorUsuario };
+// GET /api/consultas/productos-margen?dias=|desde=&hasta=&limite=
+// El costo usa Producto.precioCompra ACTUAL, no el vigente al momento de cada venta
+// (eso requeriría cruzar cada ítem con HistorialPrecio por fecha) — es una aproximación
+// razonable para un reporte gerencial, no una cifra contable exacta.
+async function productosMargen(req, res) {
+  const ahora = new Date();
+  const { rangoInicio, rangoFin } = resolverRango(req.query, ahora);
+  const limite = Math.min(50, Math.max(1, parseInt(req.query.limite, 10) || 15));
+
+  const itemsRaw = await prisma.ventaItem.groupBy({
+    by: ["productoId"],
+    where: { venta: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false } },
+    _sum: { cantidad: true, subtotal: true },
+  });
+
+  const productos = await prisma.producto.findMany({
+    where: { id: { in: itemsRaw.map((i) => i.productoId) } },
+    select: { id: true, nombre: true, sku: true, precioCompra: true },
+  });
+  const productoPorId = new Map(productos.map((p) => [p.id, p]));
+
+  const filas = itemsRaw
+    .map((it) => {
+      const p = productoPorId.get(it.productoId);
+      const cantidad = it._sum.cantidad || 0;
+      const ingreso = Number(it._sum.subtotal || 0);
+      const costo = p ? Number(p.precioCompra) * cantidad : 0;
+      const margen = ingreso - costo;
+      return {
+        productoId: it.productoId,
+        nombre: p?.nombre ?? "Producto eliminado",
+        sku: p?.sku ?? "",
+        cantidad,
+        ingreso,
+        costo,
+        margen,
+        margenPct: ingreso > 0 ? (margen / ingreso) * 100 : 0,
+      };
+    })
+    .sort((a, b) => b.margen - a.margen)
+    .slice(0, limite);
+
+  res.json({ rango: { desde: claveDia(rangoInicio), hasta: claveDia(rangoFin) }, productos: filas });
+}
+
+module.exports = { productosTop, ventasPorMetodo, ventasPorUsuario, productosMargen };
