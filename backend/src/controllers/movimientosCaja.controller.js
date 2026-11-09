@@ -1,6 +1,7 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { bloquearTurnoCompartido } = require("../lib/turnoLock");
 
 const TIPOS = ["retiro", "ingreso"];
 
@@ -22,18 +23,21 @@ async function crear(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
 
-  const turnoAbierto = await prisma.turnoCaja.findFirst({ where: { estado: "abierto" } });
-  if (!turnoAbierto) throw new HttpError(409, "No hay un turno de caja abierto");
+  const movimiento = await prisma.$transaction(async (tx) => {
+    await bloquearTurnoCompartido(tx);
+    const turnoAbierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
+    if (!turnoAbierto) throw new HttpError(409, "No hay un turno de caja abierto");
 
-  const movimiento = await prisma.movimientoCaja.create({
-    data: {
-      turnoCajaId: turnoAbierto.id,
-      tipo: parsed.data.tipo,
-      monto: parsed.data.monto,
-      motivo: parsed.data.motivo,
-      usuarioId: req.user?.id,
-    },
-    include: { usuario: { select: { id: true, nombre: true } } },
+    return tx.movimientoCaja.create({
+      data: {
+        turnoCajaId: turnoAbierto.id,
+        tipo: parsed.data.tipo,
+        monto: parsed.data.monto,
+        motivo: parsed.data.motivo,
+        usuarioId: req.user?.id,
+      },
+      include: { usuario: { select: { id: true, nombre: true } } },
+    });
   });
   res.status(201).json(serialize(movimiento));
 }

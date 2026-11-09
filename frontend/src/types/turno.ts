@@ -8,6 +8,8 @@ export interface TipoTurno {
 
 export interface ResumenVentasTurno {
   porMetodo: { efectivo: number; tarjeta: number; transferencia: number };
+  // Reembolsos hechos durante el turno; el de efectivo se resta del esperado en caja.
+  devolucionesPorMetodo?: { efectivo: number; tarjeta: number; transferencia: number };
   cantidadVentas: number;
   total: number;
 }

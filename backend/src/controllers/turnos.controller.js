@@ -1,6 +1,10 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { bloquearTurnoExclusivo } = require("../lib/turnoLock");
+const { fechaDeQuery } = require("../lib/rangoFechas");
+
+const round2 = (n) => Math.round(n * 100) / 100;
 
 const INCLUDE = {
   tipoTurno: { select: { id: true, nombre: true } },
@@ -21,27 +25,42 @@ function serialize(t) {
 // El arqueo de caja necesita saber cuánto efectivo entró realmente: una venta puede estar
 // pagada mitad efectivo mitad tarjeta, así que se agrupa por VentaPago (no por Venta), y
 // la cantidad/total de ventas se cuenta aparte sobre Venta para no duplicar por pago.
-async function resumenVentasDeTurno(turnoCajaId) {
-  const [gruposPago, ventasAgg] = await Promise.all([
-    prisma.ventaPago.groupBy({
+async function resumenVentasDeTurno(turnoCajaId, db = prisma) {
+  const [gruposPago, ventasAgg, gruposDevolucion] = await Promise.all([
+    db.ventaPago.groupBy({
       by: ["metodoPago"],
       where: { venta: { turnoCajaId } },
       _sum: { monto: true },
     }),
-    prisma.venta.aggregate({ where: { turnoCajaId, esCortesia: false }, _sum: { total: true }, _count: true }),
+    db.venta.aggregate({ where: { turnoCajaId, esCortesia: false }, _sum: { total: true }, _count: true }),
+    // Reembolsos hechos durante este turno (de ventas de este u otro turno).
+    db.devolucion.groupBy({
+      by: ["metodoReembolso"],
+      where: { turnoCajaId, metodoReembolso: { not: null } },
+      _sum: { total: true },
+    }),
   ]);
 
   const porMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
   for (const g of gruposPago) {
     porMetodo[g.metodoPago] = Number(g._sum.monto || 0);
   }
+  const devolucionesPorMetodo = { efectivo: 0, tarjeta: 0, transferencia: 0 };
+  for (const g of gruposDevolucion) {
+    devolucionesPorMetodo[g.metodoReembolso] = Number(g._sum.total || 0);
+  }
 
-  return { porMetodo, cantidadVentas: ventasAgg._count, total: Number(ventasAgg._sum.total || 0) };
+  return {
+    porMetodo,
+    devolucionesPorMetodo,
+    cantidadVentas: ventasAgg._count,
+    total: Number(ventasAgg._sum.total || 0),
+  };
 }
 
 // Retiros/ingresos de efectivo que no vienen de una venta (pago a proveedor, cambio, etc.).
-async function resumenMovimientosCaja(turnoCajaId) {
-  const grupos = await prisma.movimientoCaja.groupBy({
+async function resumenMovimientosCaja(turnoCajaId, db = prisma) {
+  const grupos = await db.movimientoCaja.groupBy({
     by: ["tipo"],
     where: { turnoCajaId },
     _sum: { monto: true },
@@ -49,7 +68,7 @@ async function resumenMovimientosCaja(turnoCajaId) {
   const porTipo = { retiro: 0, ingreso: 0 };
   for (const g of grupos) porTipo[g.tipo] = Number(g._sum.monto || 0);
 
-  const movimientos = await prisma.movimientoCaja.findMany({
+  const movimientos = await db.movimientoCaja.findMany({
     where: { turnoCajaId },
     include: { usuario: { select: { id: true, nombre: true } } },
     orderBy: { fecha: "desc" },
@@ -69,8 +88,8 @@ async function listar(req, res) {
   if (estado) where.estado = String(estado);
   if (desde || hasta) {
     where.fechaApertura = {};
-    if (desde) where.fechaApertura.gte = new Date(`${desde}T00:00:00`);
-    if (hasta) where.fechaApertura.lte = new Date(`${hasta}T23:59:59.999`);
+    if (desde) where.fechaApertura.gte = fechaDeQuery(desde, { nombre: "desde" });
+    if (hasta) where.fechaApertura.lte = fechaDeQuery(hasta, { nombre: "hasta", finDelDia: true });
   }
 
   const turnos = await prisma.turnoCaja.findMany({ where, include: INCLUDE, orderBy: { fechaApertura: "desc" } });
@@ -104,19 +123,24 @@ async function abrir(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
 
-  const abierto = await prisma.turnoCaja.findFirst({ where: { estado: "abierto" } });
-  if (abierto) throw new HttpError(409, "Ya hay un turno de caja abierto");
-
   const tipoTurno = await prisma.tipoTurno.findUnique({ where: { id: parsed.data.tipoTurnoId } });
   if (!tipoTurno || !tipoTurno.activo) throw new HttpError(404, "Tipo de turno no encontrado o inactivo");
 
-  const turno = await prisma.turnoCaja.create({
-    data: {
-      tipoTurnoId: parsed.data.tipoTurnoId,
-      montoInicial: parsed.data.montoInicial,
-      usuarioAperturaId: req.user?.id,
-    },
-    include: INCLUDE,
+  // Con el candado exclusivo, dos aperturas al mismo tiempo se hacen una después de la otra:
+  // la segunda ya ve el turno que abrió la primera y responde 409.
+  const turno = await prisma.$transaction(async (tx) => {
+    await bloquearTurnoExclusivo(tx);
+    const abierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
+    if (abierto) throw new HttpError(409, "Ya hay un turno de caja abierto");
+
+    return tx.turnoCaja.create({
+      data: {
+        tipoTurnoId: parsed.data.tipoTurnoId,
+        montoInicial: parsed.data.montoInicial,
+        usuarioAperturaId: req.user?.id,
+      },
+      include: INCLUDE,
+    });
   });
 
   res.status(201).json(serialize(turno));
@@ -134,31 +158,39 @@ async function cerrar(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
 
-  const turno = await prisma.turnoCaja.findUnique({ where: { id: req.params.id } });
-  if (!turno) throw new HttpError(404, "Turno no encontrado");
-  if (turno.estado !== "abierto") throw new HttpError(409, "Este turno ya está cerrado");
+  // Candado exclusivo: mientras se calcula el arqueo no entra ninguna venta, devolución
+  // ni movimiento de caja (todas esas operaciones toman el candado compartido).
+  const actualizado = await prisma.$transaction(async (tx) => {
+    await bloquearTurnoExclusivo(tx);
+    const turno = await tx.turnoCaja.findUnique({ where: { id: req.params.id } });
+    if (!turno) throw new HttpError(404, "Turno no encontrado");
+    if (turno.estado !== "abierto") throw new HttpError(409, "Este turno ya está cerrado");
 
-  const { porMetodo } = await resumenVentasDeTurno(turno.id);
-  const { ingresos, retiros } = await resumenMovimientosCaja(turno.id);
-  const montoEsperado = Number(turno.montoInicial) + porMetodo.efectivo + ingresos - retiros;
-  const diferencia = parsed.data.montoContado - montoEsperado;
+    const { porMetodo, devolucionesPorMetodo } = await resumenVentasDeTurno(turno.id, tx);
+    const { ingresos, retiros } = await resumenMovimientosCaja(turno.id, tx);
+    // El efectivo devuelto en el turno salió de la caja: se resta de lo esperado.
+    const montoEsperado = round2(
+      Number(turno.montoInicial) + porMetodo.efectivo - devolucionesPorMetodo.efectivo + ingresos - retiros
+    );
+    const diferencia = round2(parsed.data.montoContado - montoEsperado);
 
-  const actualizado = await prisma.turnoCaja.update({
-    where: { id: turno.id },
-    data: {
-      estado: "cerrado",
-      fechaCierre: new Date(),
-      usuarioCierreId: req.user?.id,
-      montoContado: parsed.data.montoContado,
-      montoEsperado,
-      diferencia,
-      notas: parsed.data.notas || null,
-    },
-    include: INCLUDE,
+    return tx.turnoCaja.update({
+      where: { id: turno.id },
+      data: {
+        estado: "cerrado",
+        fechaCierre: new Date(),
+        usuarioCierreId: req.user?.id,
+        montoContado: parsed.data.montoContado,
+        montoEsperado,
+        diferencia,
+        notas: parsed.data.notas || null,
+      },
+      include: INCLUDE,
+    });
   });
 
-  const resumenVentas = await resumenVentasDeTurno(turno.id);
-  const movimientosCaja = await resumenMovimientosCaja(turno.id);
+  const resumenVentas = await resumenVentasDeTurno(actualizado.id);
+  const movimientosCaja = await resumenMovimientosCaja(actualizado.id);
   res.json({ ...serialize(actualizado), resumenVentas, movimientosCaja });
 }
 

@@ -48,11 +48,15 @@ function haceDias(n: number) {
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
 
+const MAX_VENTAS = 1000;
+
 export default function HistorialPage() {
   const [ventas, setVentas] = useState<Venta[] | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [turnos, setTurnos] = useState<TurnoCaja[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // El backend devuelve como máximo MAX_VENTAS; se pide una más para saber si hubo recorte.
+  const [truncado, setTruncado] = useState(false);
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [rango, setRango] = useState<RangoPreset>("hoy");
   const [desdeCustom, setDesdeCustom] = useState(hoyStr());
@@ -78,11 +82,13 @@ export default function HistorialPage() {
           clienteId: clienteId || undefined,
           metodoPago: metodoPago || undefined,
           turnoCajaId: turnoCajaId || undefined,
+          limite: MAX_VENTAS + 1,
         }),
         clientesApi.listar(),
         turnosApi.listar(),
       ]);
-      setVentas(v);
+      setTruncado(v.length > MAX_VENTAS);
+      setVentas(v.slice(0, MAX_VENTAS));
       setClientes(c);
       setTurnos(t);
     } catch (e) {
@@ -230,6 +236,12 @@ export default function HistorialPage() {
           {[...Array(5)].map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
+        </div>
+      )}
+      {!loadError && truncado && (
+        <div className="font-body text-sm rounded-lg border border-border bg-muted px-3 py-2 text-muted-foreground">
+          Hay más de {MAX_VENTAS} ventas en este filtro: se muestran las {MAX_VENTAS} más recientes. Acota el rango de fechas
+          para ver el resto.
         </div>
       )}
       {!loadError && ventas !== null && ventas.length === 0 && (

@@ -225,21 +225,21 @@ async function eliminar(req, res) {
 // Fila de importación masiva: el frontend ya parseó el CSV/Excel a JSON, aquí solo se valida
 // y persiste. Si el SKU ya existe se actualiza (sin tocar stock, igual que /:id normal); si no,
 // se crea con el stock inicial que traiga la fila.
+// Una celda vacía (o columna ausente) queda `undefined`: al ACTUALIZAR no se toca ese campo
+// (no se pisa con 0/null), y al CREAR se usa 0 para precioCompra, stock y stockMinimo.
+const vacioAUndefined = (v) => (v === "" || v == null ? undefined : v);
 const filaImportSchema = z.object({
   sku: z.string().trim().min(1, "SKU obligatorio"),
-  codigoBarras: z.preprocess(
-    (v) => (v === "" || v == null ? null : v),
-    z.string().trim().min(1).nullable().optional()
-  ),
+  codigoBarras: z.preprocess(vacioAUndefined, z.string().trim().min(1).optional()),
   nombre: z.string().trim().min(1, "Nombre obligatorio"),
   categoria: z.preprocess((v) => (v === "" ? null : v), z.string().trim().optional().nullable()),
-  precioCompra: z.coerce.number().nonnegative("Precio de compra inválido").optional().default(0),
+  precioCompra: z.preprocess(vacioAUndefined, z.coerce.number().nonnegative("Precio de compra inválido").optional()),
   precioVenta: z.preprocess(
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().nonnegative("Precio de venta inválido")
   ),
-  stock: z.coerce.number().int().nonnegative("Stock inválido").optional().default(0),
-  stockMinimo: z.coerce.number().int().nonnegative("Stock mínimo inválido").optional().default(0),
+  stock: z.preprocess(vacioAUndefined, z.coerce.number().int().nonnegative("Stock inválido").optional()),
+  stockMinimo: z.preprocess(vacioAUndefined, z.coerce.number().int().nonnegative("Stock mínimo inválido").optional()),
   unidad: z.preprocess((v) => (v === "" ? null : v), z.string().trim().optional().nullable()),
   proveedor: z.preprocess((v) => (v === "" ? null : v), z.string().trim().optional().nullable()),
 });
@@ -310,15 +310,36 @@ async function importar(req, res) {
           const dupBarras = await prisma.producto.findUnique({ where: { codigoBarras: datos.codigoBarras } });
           if (dupBarras) throw new Error(`El código de barras ya pertenece a "${dupBarras.nombre}"`);
         }
+        // El stock nunca se toca al actualizar (se mueve con entradas/salidas); los campos
+        // vacíos en la fila quedan undefined y Prisma los ignora.
         const { stock, ...actualizables } = datos;
-        const actualizado = await prisma.producto.update({
-          where: { id: existente.id },
-          data: {
-            ...actualizables,
-            ...(proveedorId !== undefined ? { proveedorId } : {}),
-            ...(categoriaId !== undefined ? { categoriaId } : {}),
-            ...(unidadId !== undefined ? { unidadId } : {}),
-          },
+        const cambiaPrecio =
+          (actualizables.precioCompra !== undefined && actualizables.precioCompra !== Number(existente.precioCompra)) ||
+          actualizables.precioVenta !== Number(existente.precioVenta);
+        const actualizado = await prisma.$transaction(async (tx) => {
+          const upd = await tx.producto.update({
+            where: { id: existente.id },
+            data: {
+              ...actualizables,
+              ...(proveedorId !== undefined ? { proveedorId } : {}),
+              ...(categoriaId !== undefined ? { categoriaId } : {}),
+              ...(unidadId !== undefined ? { unidadId } : {}),
+            },
+          });
+          // Igual que la edición manual: un cambio de precio por importación queda en el historial.
+          if (cambiaPrecio) {
+            await tx.historialPrecio.create({
+              data: {
+                productoId: existente.id,
+                precioCompraAnterior: existente.precioCompra,
+                precioCompraNuevo: upd.precioCompra,
+                precioVentaAnterior: existente.precioVenta,
+                precioVentaNuevo: upd.precioVenta,
+                usuarioId: req.user?.id,
+              },
+            });
+          }
+          return upd;
         });
         actualizados++;
         resultados.push({ fila, sku: actualizado.sku, ok: true, accion: "actualizado", nota });
@@ -331,7 +352,15 @@ async function importar(req, res) {
         if (!unidadFinal) throw new Error("No hay unidades configuradas en el sistema");
         const creado = await prisma.$transaction(async (tx) => {
           const p = await tx.producto.create({
-            data: { ...datos, proveedorId: proveedorId ?? null, categoriaId: categoriaId ?? null, unidadId: unidadFinal },
+            data: {
+              precioCompra: 0,
+              stock: 0,
+              stockMinimo: 0,
+              ...Object.fromEntries(Object.entries(datos).filter(([, v]) => v !== undefined)),
+              proveedorId: proveedorId ?? null,
+              categoriaId: categoriaId ?? null,
+              unidadId: unidadFinal,
+            },
           });
           await inicializarStockProducto(tx, p.id, p.stock);
           return p;

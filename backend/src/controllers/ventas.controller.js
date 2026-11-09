@@ -2,6 +2,10 @@ const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { bodegaPrincipal, ajustarStockBodega } = require("../lib/stockBodega");
+const { bloquearTurnoCompartido } = require("../lib/turnoLock");
+const { fechaDeQuery } = require("../lib/rangoFechas");
+
+const round2 = (n) => Math.round(n * 100) / 100;
 
 const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia"];
 
@@ -76,6 +80,11 @@ const DEVOLUCION_INCLUDE = {
 
 const devolucionSchema = z.object({
   motivo: z.string().optional().nullable(),
+  // Obligatorio solo si la venta se pagó con 2 formas de pago; si no, se usa la única que tuvo.
+  metodoReembolso: z
+    .enum(METODOS_PAGO, { errorMap: () => ({ message: "Método de reembolso inválido" }) })
+    .optional()
+    .nullable(),
   items: z
     .array(
       z.object({
@@ -88,21 +97,30 @@ const devolucionSchema = z.object({
 
 // GET /api/ventas?fecha=YYYY-MM-DD&desde=YYYY-MM-DD&hasta=YYYY-MM-DD&clienteId=&metodoPago=&turnoCajaId=
 // `fecha` (un solo día) tiene prioridad sobre `desde`/`hasta` (rango) si ambos llegan.
+// `limite`: máximo de ventas a devolver (las más recientes). Por defecto 1000, tope 5000,
+// para que un rango de fechas enorme no traiga decenas de miles de ventas de una vez.
+const LIMITE_VENTAS_DEFECTO = 1000;
+const LIMITE_VENTAS_MAXIMO = 5000;
+
 async function listar(req, res) {
   const { fecha, desde, hasta, clienteId, metodoPago, turnoCajaId } = req.query;
   const where = {};
+  const limitePedido = parseInt(req.query.limite, 10);
+  const limite = Number.isFinite(limitePedido) && limitePedido > 0
+    ? Math.min(limitePedido, LIMITE_VENTAS_MAXIMO)
+    : LIMITE_VENTAS_DEFECTO;
 
   if (clienteId) where.clienteId = String(clienteId);
   if (metodoPago) where.pagos = { some: { metodoPago: String(metodoPago) } };
   if (turnoCajaId) where.turnoCajaId = String(turnoCajaId);
   if (fecha) {
-    const inicio = new Date(`${fecha}T00:00:00`);
-    const fin = new Date(`${fecha}T23:59:59.999`);
+    const inicio = fechaDeQuery(fecha, { nombre: "fecha" });
+    const fin = fechaDeQuery(fecha, { nombre: "fecha", finDelDia: true });
     where.fecha = { gte: inicio, lte: fin };
   } else if (desde || hasta) {
     where.fecha = {};
-    if (desde) where.fecha.gte = new Date(`${desde}T00:00:00`);
-    if (hasta) where.fecha.lte = new Date(`${hasta}T23:59:59.999`);
+    if (desde) where.fecha.gte = fechaDeQuery(desde, { nombre: "desde" });
+    if (hasta) where.fecha.lte = fechaDeQuery(hasta, { nombre: "hasta", finDelDia: true });
   }
 
   const ventas = await prisma.venta.findMany({
@@ -115,6 +133,7 @@ async function listar(req, res) {
       pagos: true,
     },
     orderBy: { fecha: "desc" },
+    take: limite,
   });
 
   res.json(ventas.map(serializeVenta));
@@ -170,6 +189,7 @@ async function crear(req, res) {
   }
 
   const venta = await prisma.$transaction(async (tx) => {
+    await bloquearTurnoCompartido(tx);
     const turnoAbierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
     if (!turnoAbierto) {
       throw new HttpError(409, "Debes abrir un turno de caja antes de vender");
@@ -278,15 +298,38 @@ async function crearDevolucion(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { motivo, items } = parsed.data;
+  const { motivo, items, metodoReembolso: metodoPedido } = parsed.data;
   const ventaId = req.params.id;
 
   const devolucion = await prisma.$transaction(async (tx) => {
+    await bloquearTurnoCompartido(tx);
     const venta = await tx.venta.findUnique({
       where: { id: ventaId },
-      include: { items: { include: { devolucionItems: true } } },
+      include: {
+        items: { include: { devolucionItems: true } },
+        pagos: true,
+        devoluciones: { select: { total: true } },
+      },
     });
     if (!venta) throw new HttpError(404, "Venta no encontrada");
+
+    // Cómo se reembolsa: una cortesía no se pagó, así que no hay reembolso de dinero.
+    let metodoReembolso = null;
+    if (!venta.esCortesia) {
+      if (metodoPedido) metodoReembolso = metodoPedido;
+      else if (venta.pagos.length === 1) metodoReembolso = venta.pagos[0].metodoPago;
+      else throw new HttpError(400, "La venta se pagó con 2 formas de pago: indica el método de reembolso");
+    }
+
+    // El efectivo devuelto sale de la caja del turno abierto (y se resta en su arqueo).
+    const turnoAbierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
+    if (metodoReembolso === "efectivo" && !turnoAbierto) {
+      throw new HttpError(409, "Abre un turno de caja para devolver efectivo");
+    }
+
+    // Lo realmente cobrado por unidad: subtotal del ítem (ya con su descuento), prorrateado
+    // por el descuento del ticket (total / subtotal de la venta).
+    const factorTicket = Number(venta.subtotal) > 0 ? Number(venta.total) / Number(venta.subtotal) : 0;
 
     const bodega = await bodegaPrincipal(tx);
     let total = 0;
@@ -303,7 +346,8 @@ async function crearDevolucion(req, res) {
         throw new HttpError(409, `Cantidad a devolver excede lo disponible (disponible: ${disponible})`);
       }
 
-      const subtotal = Number(ventaItem.precioUnitario) * cantidad;
+      const pagadoPorUnidad = (Number(ventaItem.subtotal) / ventaItem.cantidad) * factorTicket;
+      const subtotal = venta.esCortesia ? 0 : round2(pagadoPorUnidad * cantidad);
       total += subtotal;
       itemsData.push({ ventaItemId, cantidad, subtotal, productoId: ventaItem.productoId });
 
@@ -315,11 +359,23 @@ async function crearDevolucion(req, res) {
       stockResultantePorProducto.set(ventaItem.productoId, producto.stock);
     }
 
+    // Por redondeo, la suma de las devoluciones nunca debe superar lo cobrado en la venta.
+    const yaReembolsado = venta.devoluciones.reduce((s, d) => s + Number(d.total), 0);
+    const maximo = round2(Math.max(0, (venta.esCortesia ? 0 : Number(venta.total)) - yaReembolsado));
+    total = round2(total);
+    if (total > maximo) {
+      const ultimo = itemsData[itemsData.length - 1];
+      ultimo.subtotal = round2(ultimo.subtotal - (total - maximo));
+      total = maximo;
+    }
+
     const devolucionCreada = await tx.devolucion.create({
       data: {
         ventaId,
         motivo: motivo || null,
         total,
+        metodoReembolso,
+        turnoCajaId: turnoAbierto?.id ?? null,
         usuarioId: req.user?.id,
         items: {
           create: itemsData.map(({ ventaItemId, cantidad, subtotal }) => ({ ventaItemId, cantidad, subtotal })),

@@ -296,6 +296,7 @@ model TurnoCaja {
   usuarioCierre     Usuario?  @relation("TurnosCerrados", fields: [usuarioCierreId], references: [id])
   ventas            Venta[]
   movimientosCaja   MovimientoCaja[]
+  devoluciones      Devolucion[]
 
   @@index([estado])
   @@map("turnos_caja")
@@ -348,8 +349,14 @@ model Devolucion {
   usuario   Usuario?         @relation(fields: [usuarioId], references: [id])
   fecha     DateTime         @default(now())
   items     DevolucionItem[]
+  // Turno abierto al momento de devolver y cómo se reembolsó: un reembolso en "efectivo"
+  // sale de la caja de ese turno y se resta en su arqueo. null en cortesías (no hay reembolso).
+  turnoCajaId     String?
+  turnoCaja       TurnoCaja? @relation(fields: [turnoCajaId], references: [id])
+  metodoReembolso String?    // "efectivo" | "tarjeta" | "transferencia"
 
   @@index([ventaId])
+  @@index([turnoCajaId])
   @@map("devoluciones")
 }
 

@@ -28,6 +28,8 @@ export interface Devolucion {
   ventaId: string;
   motivo: string | null;
   total: number;
+  metodoReembolso?: MetodoPago | null;
+  turnoCajaId?: string | null;
   fecha: string;
   usuario?: { id: string; nombre: string } | null;
   items: DevolucionItem[];
@@ -62,5 +64,6 @@ export type VentaInput = {
 
 export type DevolucionInput = {
   motivo?: string | null;
+  metodoReembolso?: MetodoPago | null;
   items: { ventaItemId: string; cantidad: number }[];
 };

@@ -68,4 +68,21 @@ describe("Permisos", () => {
 
     expect(res.status).toBe(403);
   });
+  test("un token deja de servir apenas se desactiva al usuario", async () => {
+    const antes = await request(app).get("/api/productos").set("Authorization", `Bearer ${cajero.token}`);
+    expect(antes.status).toBe(200);
+
+    await prisma.usuario.update({ where: { id: cajero.usuario.id }, data: { activo: false } });
+
+    const despues = await request(app).get("/api/productos").set("Authorization", `Bearer ${cajero.token}`);
+    expect(despues.status).toBe(401);
+  });
+
+  test("si a un admin le quitan el rol, su token viejo ya no da acceso de admin", async () => {
+    const rolCajero = await prisma.rol.findUnique({ where: { nombre: "cajero" } });
+    await prisma.usuario.update({ where: { id: admin.usuario.id }, data: { rolId: rolCajero.id } });
+
+    const res = await request(app).get("/api/permisos").set("Authorization", `Bearer ${admin.token}`);
+    expect(res.status).toBe(403);
+  });
 });

@@ -9,6 +9,7 @@ export const ventasApi = {
     clienteId?: string;
     metodoPago?: string;
     turnoCajaId?: string;
+    limite?: number;
   }) => {
     const qs = new URLSearchParams();
     if (params?.fecha) qs.set("fecha", params.fecha);
@@ -17,6 +18,7 @@ export const ventasApi = {
     if (params?.clienteId) qs.set("clienteId", params.clienteId);
     if (params?.metodoPago) qs.set("metodoPago", params.metodoPago);
     if (params?.turnoCajaId) qs.set("turnoCajaId", params.turnoCajaId);
+    if (params?.limite) qs.set("limite", String(params.limite));
     const query = qs.toString();
     return api.get<Venta[]>(`/ventas${query ? `?${query}` : ""}`);
   },

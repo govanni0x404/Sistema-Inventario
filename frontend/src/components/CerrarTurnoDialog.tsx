@@ -35,7 +35,8 @@ export default function CerrarTurnoDialog({
   const efectivo = detalle?.resumenVentas?.porMetodo.efectivo ?? 0;
   const ingresos = detalle?.movimientosCaja?.ingresos ?? 0;
   const retiros = detalle?.movimientosCaja?.retiros ?? 0;
-  const esperado = turno.montoInicial + efectivo + ingresos - retiros;
+  const devueltoEfectivo = detalle?.resumenVentas?.devolucionesPorMetodo?.efectivo ?? 0;
+  const esperado = turno.montoInicial + efectivo - devueltoEfectivo + ingresos - retiros;
   const diferencia = montoContado ? Number(montoContado) - esperado : null;
 
   const handleSubmit = async (e: FormEvent) => {
@@ -69,6 +70,12 @@ export default function CerrarTurnoDialog({
             <span className="text-muted-foreground">Ventas en efectivo</span>
             <span className="font-mono text-foreground">{detalle ? money(efectivo) : "…"}</span>
           </div>
+          {devueltoEfectivo > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Devoluciones en efectivo</span>
+              <span className="font-mono text-destructive">-{money(devueltoEfectivo)}</span>
+            </div>
+          )}
           {ingresos > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Ingresos de caja</span>

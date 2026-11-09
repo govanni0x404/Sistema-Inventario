@@ -1,3 +1,17 @@
+const HttpError = require("./HttpError");
+
+// Convierte un parámetro de query "YYYY-MM-DD" en una fecha local (inicio o fin de ese día).
+// Si viene con otro formato o es una fecha imposible, responde 400 en vez de un 500.
+function fechaDeQuery(valor, { finDelDia = false, nombre = "fecha" } = {}) {
+  const texto = String(valor);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+  if (!d || d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) {
+    throw new HttpError(400, `Fecha inválida en "${nombre}" (usa el formato AAAA-MM-DD)`);
+  }
+  return finDelDia ? finDeDia(d) : d;
+}
+
 function inicioDeDia(fecha) {
   const d = new Date(fecha);
   d.setHours(0, 0, 0, 0);
@@ -44,4 +58,4 @@ function resolverRango(query, ahora) {
   return { rangoInicio, rangoFin, dias };
 }
 
-module.exports = { inicioDeDia, finDeDia, claveDia, resolverRango };
+module.exports = { inicioDeDia, finDeDia, claveDia, resolverRango, fechaDeQuery };

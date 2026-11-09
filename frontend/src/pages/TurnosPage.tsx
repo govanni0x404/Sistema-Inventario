@@ -189,6 +189,19 @@ export default function TurnosPage() {
                       <span>Total ({detalle.resumenVentas.cantidadVentas} venta(s))</span>
                       <span className="font-mono">{money(detalle.resumenVentas.total)}</span>
                     </div>
+                    {(() => {
+                      const d = detalle.resumenVentas.devolucionesPorMetodo;
+                      const totalDev = d ? d.efectivo + d.tarjeta + d.transferencia : 0;
+                      if (!d || totalDev <= 0) return null;
+                      return (
+                        <div className="flex justify-between px-3 py-2">
+                          <span className="text-muted-foreground">
+                            Devoluciones (efectivo {money(d.efectivo)} · otros {money(d.tarjeta + d.transferencia)})
+                          </span>
+                          <span className="font-mono text-destructive">-{money(totalDev)}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
