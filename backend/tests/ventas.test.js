@@ -209,4 +209,67 @@ describe("Ventas", () => {
 
     expect(res.status).toBe(400);
   });
+  describe("con lista de precios", () => {
+    async function abrirTurno() {
+      await request(app)
+        .post("/api/turnos")
+        .set("Authorization", `Bearer ${cajero.token}`)
+        .send({ tipoTurnoId: tipoTurno.id, montoInicial: 100 });
+    }
+
+    test("cobra el precio de la lista cuando el producto tiene override", async () => {
+      await abrirTurno();
+      const lista = await prisma.listaPrecio.create({ data: { nombre: "Mayorista" } });
+      await prisma.precioLista.create({ data: { listaPrecioId: lista.id, productoId: producto.id, precio: 15 } });
+
+      const res = await request(app)
+        .post("/api/ventas")
+        .set("Authorization", `Bearer ${cajero.token}`)
+        .send({
+          listaPrecioId: lista.id,
+          pagos: [
+            { metodoPago: "efectivo", monto: 10 },
+            { metodoPago: "tarjeta", monto: 20 },
+          ],
+          items: [{ productoId: producto.id, cantidad: 2 }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.total).toBe(30);
+      expect(res.body.items[0].precioUnitario).toBe(15);
+    });
+
+    test("usa el precio base para productos sin override en la lista", async () => {
+      await abrirTurno();
+      const lista = await prisma.listaPrecio.create({ data: { nombre: "Promo" } });
+
+      const res = await request(app)
+        .post("/api/ventas")
+        .set("Authorization", `Bearer ${cajero.token}`)
+        .send({
+          listaPrecioId: lista.id,
+          pagos: [{ metodoPago: "efectivo", monto: 20 }],
+          items: [{ productoId: producto.id, cantidad: 1 }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.total).toBe(20);
+    });
+
+    test("rechaza una lista inactiva o inexistente", async () => {
+      await abrirTurno();
+      const lista = await prisma.listaPrecio.create({ data: { nombre: "Vieja", activo: false } });
+
+      const res = await request(app)
+        .post("/api/ventas")
+        .set("Authorization", `Bearer ${cajero.token}`)
+        .send({
+          listaPrecioId: lista.id,
+          pagos: [{ metodoPago: "efectivo", monto: 20 }],
+          items: [{ productoId: producto.id, cantidad: 1 }],
+        });
+
+      expect(res.status).toBe(404);
+    });
+  });
 });

@@ -52,6 +52,7 @@ export interface Venta {
 
 export type VentaInput = {
   clienteId?: string | null;
+  listaPrecioId?: string | null;
   pagos?: { metodoPago: MetodoPago; monto: number }[];
   esCortesia?: boolean;
   motivoCortesia?: string | null;

@@ -82,16 +82,16 @@ export default function ProductosPage() {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
-      await productosApi.eliminar(deleteTarget.id);
-      setProductos((prev) => prev?.filter((p) => p.id !== deleteTarget.id) ?? null);
-      toast.success("Producto eliminado");
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 200) {
+      const resultado = await productosApi.eliminar(deleteTarget.id);
+      if (resultado?._desactivado) {
         await cargar();
         toast("El producto tenía ventas asociadas: se desactivó en lugar de eliminarse");
       } else {
-        toast.error("No se pudo eliminar el producto");
+        setProductos((prev) => prev?.filter((p) => p.id !== deleteTarget.id) ?? null);
+        toast.success("Producto eliminado");
       }
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "No se pudo eliminar el producto");
     } finally {
       setDeleteTarget(null);
     }

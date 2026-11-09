@@ -8,6 +8,7 @@ const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia"];
 const ventaSchema = z
   .object({
     clienteId: z.string().uuid().optional().nullable(),
+    listaPrecioId: z.string().uuid().optional().nullable(),
     esCortesia: z.boolean().optional().default(false),
     motivoCortesia: z.string().trim().optional().nullable(),
     pagos: z
@@ -141,7 +142,7 @@ async function crear(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { clienteId, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia } = parsed.data;
+  const { clienteId, listaPrecioId, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia } = parsed.data;
 
   // Sumar cantidades y descuentos si el mismo producto aparece más de una vez en el ticket.
   const cantidadPorProducto = new Map();
@@ -154,6 +155,18 @@ async function crear(req, res) {
   if (clienteId) {
     const cliente = await prisma.cliente.findUnique({ where: { id: clienteId } });
     if (!cliente) throw new HttpError(404, "Cliente no encontrado");
+  }
+
+  // Lista de precios elegida en Caja: sus precios reemplazan a Producto.precioVenta.
+  // Los productos sin fila en la lista se cobran a su precio base.
+  const precioListaPorProducto = new Map();
+  if (listaPrecioId) {
+    const lista = await prisma.listaPrecio.findUnique({ where: { id: listaPrecioId } });
+    if (!lista || !lista.activo) throw new HttpError(404, "Lista de precios no encontrada o inactiva");
+    const precios = await prisma.precioLista.findMany({
+      where: { listaPrecioId, productoId: { in: [...cantidadPorProducto.keys()] } },
+    });
+    for (const p of precios) precioListaPorProducto.set(p.productoId, Number(p.precio));
   }
 
   const venta = await prisma.$transaction(async (tx) => {
@@ -179,7 +192,9 @@ async function crear(req, res) {
         throw new HttpError(409, `Stock insuficiente para "${producto.nombre}" (disponible: ${producto.stock})`);
       }
 
-      const precioUnitario = Number(producto.precioVenta);
+      const precioUnitario = precioListaPorProducto.has(productoId)
+        ? precioListaPorProducto.get(productoId)
+        : Number(producto.precioVenta);
       const bruto = precioUnitario * cantidad;
       const descuentoItem = descuentoPorProducto.get(productoId) || 0;
       if (descuentoItem > bruto) {

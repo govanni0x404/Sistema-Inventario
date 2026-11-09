@@ -40,19 +40,38 @@ async function main() {
     },
   });
 
+  // Catálogos que el producto necesita como FK (categoría opcional, unidad obligatoria).
+  const unidadPieza = await prisma.unidad.upsert({ where: { nombre: "Pieza" }, update: {}, create: { nombre: "Pieza" } });
+  const categorias = {};
+  for (const nombre of ["Abarrotes", "Bebidas", "Limpieza"]) {
+    categorias[nombre] = await prisma.categoria.upsert({ where: { nombre }, update: {}, create: { nombre } });
+  }
+
+  // La migración de bodegas crea "Bodega Principal"; si la BD se creó de otra forma, se asegura aquí.
+  let principal = await prisma.bodega.findFirst({ where: { principal: true } });
+  if (!principal) {
+    principal = await prisma.bodega.create({ data: { nombre: "Bodega Principal", principal: true } });
+  }
+
   const productos = [
-    { sku: "AB-001", nombre: "Arroz 1kg", categoria: "Abarrotes", precioCompra: 18, precioVenta: 25, stock: 40, stockMinimo: 10, unidad: "pieza" },
-    { sku: "AB-002", nombre: "Frijol 1kg", categoria: "Abarrotes", precioCompra: 22, precioVenta: 30, stock: 8, stockMinimo: 10, unidad: "pieza" },
-    { sku: "BE-001", nombre: "Refresco 600ml", categoria: "Bebidas", precioCompra: 12, precioVenta: 18, stock: 60, stockMinimo: 15, unidad: "pieza" },
-    { sku: "BE-002", nombre: "Agua 1L", categoria: "Bebidas", precioCompra: 8, precioVenta: 12, stock: 5, stockMinimo: 12, unidad: "pieza" },
-    { sku: "LI-001", nombre: "Jabón de trastes", categoria: "Limpieza", precioCompra: 15, precioVenta: 22, stock: 25, stockMinimo: 8, unidad: "pieza", proveedorId: distribuidora.id },
+    { sku: "AB-001", nombre: "Arroz 1kg", categoria: "Abarrotes", precioCompra: 18, precioVenta: 25, stock: 40, stockMinimo: 10 },
+    { sku: "AB-002", nombre: "Frijol 1kg", categoria: "Abarrotes", precioCompra: 22, precioVenta: 30, stock: 8, stockMinimo: 10 },
+    { sku: "BE-001", nombre: "Refresco 600ml", categoria: "Bebidas", precioCompra: 12, precioVenta: 18, stock: 60, stockMinimo: 15 },
+    { sku: "BE-002", nombre: "Agua 1L", categoria: "Bebidas", precioCompra: 8, precioVenta: 12, stock: 5, stockMinimo: 12 },
+    { sku: "LI-001", nombre: "Jabón de trastes", categoria: "Limpieza", precioCompra: 15, precioVenta: 22, stock: 25, stockMinimo: 8, proveedorId: distribuidora.id },
   ];
 
-  for (const producto of productos) {
-    await prisma.producto.upsert({
-      where: { sku: producto.sku },
-      update: {},
-      create: producto,
+  for (const { categoria, ...producto } of productos) {
+    const existente = await prisma.producto.findUnique({ where: { sku: producto.sku } });
+    if (existente) continue;
+    // Producto.stock es el total cacheado: debe coincidir con la suma de StockBodega.
+    await prisma.producto.create({
+      data: {
+        ...producto,
+        categoriaId: categorias[categoria].id,
+        unidadId: unidadPieza.id,
+        stockBodegas: { create: [{ bodegaId: principal.id, cantidad: producto.stock }] },
+      },
     });
   }
 

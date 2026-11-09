@@ -35,10 +35,16 @@ describe("Permisos", () => {
     const put = await request(app)
       .put("/api/permisos")
       .set("Authorization", `Bearer ${admin.token}`)
-      .send({ cambios: [{ rol: "cajero", seccion: "turnos", permitido: false }] });
+      .send({
+        cambios: [
+          { rol: "cajero", seccion: "turnos", permitido: false },
+          { rol: "cajero", seccion: "caja", permitido: false },
+        ],
+      });
 
     expect(put.status).toBe(200);
     expect(put.body.permisos.cajero.turnos).toBe(false);
+    expect(put.body.permisos.cajero.caja).toBe(false);
 
     const bloqueado = await request(app)
       .post("/api/turnos")

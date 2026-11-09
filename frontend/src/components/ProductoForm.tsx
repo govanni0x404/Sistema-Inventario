@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import QuickCreatePopover from "./QuickCreatePopover";
+import { useAuth } from "../context/AuthContext";
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -67,6 +68,8 @@ export default function ProductoForm({
   saving?: boolean;
 }) {
   const [form, setForm] = useState<FormState>(toFormState(initial));
+  // Categorías y unidades solo las crea un admin (el backend responde 403 a los demás).
+  const esAdmin = useAuth().usuario?.rol === "admin";
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [unidades, setUnidades] = useState<Unidad[]>([]);
@@ -150,15 +153,17 @@ export default function ProductoForm({
               ))}
             </SelectContent>
           </Select>
-          <QuickCreatePopover
-            label="Categoría"
-            placeholder="Nombre de la categoría"
-            onCreate={async (nombre) => {
-              const nueva = await categoriasApi.crear({ nombre });
-              setCategorias((prev) => [...prev, nueva].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-              set("categoriaId", nueva.id);
-            }}
-          />
+          {esAdmin && (
+            <QuickCreatePopover
+              label="Categoría"
+              placeholder="Nombre de la categoría"
+              onCreate={async (nombre) => {
+                const nueva = await categoriasApi.crear({ nombre });
+                setCategorias((prev) => [...prev, nueva].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+                set("categoriaId", nueva.id);
+              }}
+            />
+          )}
         </div>
       </Field>
       <Field label="Precio de venta" error={err("precioVenta")}>
@@ -181,15 +186,17 @@ export default function ProductoForm({
               ))}
             </SelectContent>
           </Select>
-          <QuickCreatePopover
-            label="Unidad"
-            placeholder="Ej. Kg, Litro, Caja"
-            onCreate={async (nombre) => {
-              const nueva = await unidadesApi.crear({ nombre });
-              setUnidades((prev) => [...prev, nueva].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-              set("unidadId", nueva.id);
-            }}
-          />
+          {esAdmin && (
+            <QuickCreatePopover
+              label="Unidad"
+              placeholder="Ej. Kg, Litro, Caja"
+              onCreate={async (nombre) => {
+                const nueva = await unidadesApi.crear({ nombre });
+                setUnidades((prev) => [...prev, nueva].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+                set("unidadId", nueva.id);
+              }}
+            />
+          )}
         </div>
       </Field>
       <Field label="Proveedor">

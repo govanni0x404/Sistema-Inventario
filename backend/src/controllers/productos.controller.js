@@ -206,9 +206,11 @@ async function eliminar(req, res) {
   const producto = await prisma.producto.findUnique({ where: { id: req.params.id } });
   if (!producto) return res.status(404).json({ error: "Producto no encontrado" });
 
+  // Con ventas (o en una venta en espera) no se puede borrar físicamente: se desactiva.
   const tieneVentas = await prisma.ventaItem.findFirst({ where: { productoId: req.params.id } });
+  const enEspera = await prisma.ventaEnEsperaItem.findFirst({ where: { productoId: req.params.id } });
 
-  if (tieneVentas) {
+  if (tieneVentas || enEspera) {
     const desactivado = await prisma.producto.update({
       where: { id: req.params.id },
       data: { activo: false },

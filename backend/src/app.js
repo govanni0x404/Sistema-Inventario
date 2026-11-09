@@ -22,7 +22,6 @@ const bodegasRoutes = require("./routes/bodegas.routes");
 const auditoriaRoutes = require("./routes/auditoria.routes");
 const auth = require("./middleware/auth");
 const requireAdmin = require("./middleware/requireAdmin");
-const requireSeccion = require("./middleware/requireSeccion");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -45,7 +44,7 @@ app.use("/api/ventas", auth, ventasRoutes);
 app.use("/api/permisos", auth, requireAdmin, permisosRoutes);
 app.use("/api/usuarios", auth, requireAdmin, usuariosRoutes);
 app.use("/api/dashboard", auth, dashboardRoutes);
-app.use("/api/turnos", auth, requireSeccion("turnos"), turnosRoutes);
+app.use("/api/turnos", auth, turnosRoutes);
 app.use("/api/tipos-turno", auth, tiposTurnoRoutes);
 app.use("/api/categorias", auth, categoriasRoutes);
 app.use("/api/unidades", auth, unidadesRoutes);

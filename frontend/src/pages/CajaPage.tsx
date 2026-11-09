@@ -104,6 +104,19 @@ export default function CajaPage() {
 
   const precioEfectivo = (p: Producto) => overridePrecios[p.id] ?? p.precioVenta;
 
+  // Al cambiar de lista, los productos que ya están en el carrito toman el precio nuevo.
+  // El backend cobra con la misma lista (listaPrecioId), así que pantalla y cobro coinciden.
+  useEffect(() => {
+    setCart((prev) =>
+      prev.map((c) => {
+        const base = productos?.find((p) => p.id === c.productoId)?.precioVenta ?? c.precio;
+        const precio = overridePrecios[c.productoId] ?? base;
+        return { ...c, precio, descuento: Math.min(c.descuento, precio * c.cantidad) };
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overridePrecios]);
+
   const disponibles = useMemo(() => (productos ?? []).filter((p) => p.activo), [productos]);
 
   const results = useMemo(() => {
@@ -260,7 +273,7 @@ export default function CajaPage() {
       v.items.map((it) => ({
         productoId: it.productoId,
         nombre: it.producto.nombre,
-        precio: it.producto.precioVenta,
+        precio: overridePrecios[it.productoId] ?? it.producto.precioVenta,
         cantidad: it.cantidad,
         stockMax: it.producto.stock,
         descuento: it.descuento,
@@ -291,6 +304,7 @@ export default function CajaPage() {
     try {
       const venta = await ventasApi.crear({
         clienteId: clienteId || null,
+        listaPrecioId: listaPrecioId || null,
         esCortesia: cortesia,
         motivoCortesia: cortesia ? motivoCortesia.trim() : undefined,
         pagos: cortesia

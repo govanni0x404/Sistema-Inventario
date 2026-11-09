@@ -178,4 +178,40 @@ describe("Turnos de caja", () => {
       .send({ tipo: "retiro", monto: 10, motivo: "Prueba" });
     expect(res.status).toBe(409);
   });
+  describe("permisos cruzados con Caja e Historial", () => {
+    async function bloquear(seccion) {
+      const rol = await prisma.rol.findUnique({ where: { nombre: "cajero" } });
+      await prisma.rolPermiso.create({ data: { rolId: rol.id, seccion, permitido: false } });
+    }
+
+    test("con 'caja' pero sin 'turnos' puede consultar, abrir y cerrar el turno", async () => {
+      await bloquear("turnos");
+      const auth = { Authorization: `Bearer ${cajero.token}` };
+
+      const actual = await request(app).get("/api/turnos/actual").set(auth);
+      expect(actual.status).toBe(200);
+
+      const abierto = await request(app).post("/api/turnos").set(auth).send({ tipoTurnoId: tipoTurno.id, montoInicial: 100 });
+      expect(abierto.status).toBe(201);
+
+      const detalle = await request(app).get(`/api/turnos/${abierto.body.id}`).set(auth);
+      expect(detalle.status).toBe(200);
+
+      const cerrado = await request(app).post(`/api/turnos/${abierto.body.id}/cerrar`).set(auth).send({ montoContado: 100 });
+      expect(cerrado.status).toBe(200);
+    });
+
+    test("con 'historial' pero sin 'turnos' puede listar turnos (filtro del Historial)", async () => {
+      await bloquear("turnos");
+      const res = await request(app).get("/api/turnos").set("Authorization", `Bearer ${cajero.token}`);
+      expect(res.status).toBe(200);
+    });
+
+    test("sin 'turnos' ni 'historial' no puede listar turnos", async () => {
+      await bloquear("turnos");
+      await bloquear("historial");
+      const res = await request(app).get("/api/turnos").set("Authorization", `Bearer ${cajero.token}`);
+      expect(res.status).toBe(403);
+    });
+  });
 });
