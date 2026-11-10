@@ -5,9 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { printTicket } from "../lib/printTicket";
+import { useNegocio } from "../context/NegocioContext";
 import DevolucionDialog from "./DevolucionDialog";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 function cantidadDevuelta(venta: Venta, ventaItemId: string) {
   let total = 0;
@@ -29,6 +30,7 @@ export default function VentaDetalleModal({
   onCambio?: (venta: Venta) => void;
 }) {
   const [devolviendo, setDevolviendo] = useState(false);
+  const { negocio } = useNegocio();
   const hayDevoluciones = (venta?.devoluciones?.length ?? 0) > 0;
   const quedaAlgoPorDevolver = venta
     ? venta.items.some((it) => it.cantidad - cantidadDevuelta(venta, it.id) > 0)
@@ -47,7 +49,7 @@ export default function VentaDetalleModal({
                 <div className="flex-1 min-w-0">
                   <DialogTitle>Detalle de venta</DialogTitle>
                   <DialogDescription>
-                    {new Date(venta.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                    {new Date(venta.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                   </DialogDescription>
                 </div>
                 {venta.esCortesia && (
@@ -65,7 +67,7 @@ export default function VentaDetalleModal({
                     <Undo2 size={14} /> Devolver
                   </Button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => printTicket(venta)} className="shrink-0">
+                <Button variant="outline" size="sm" onClick={() => printTicket(venta, negocio)} className="shrink-0">
                   <Printer size={14} /> Imprimir
                 </Button>
               </div>
@@ -153,7 +155,7 @@ export default function VentaDetalleModal({
                     <div key={d.id} className="flex items-center justify-between gap-4 px-4 py-3">
                       <div className="min-w-0">
                         <div className="font-body text-sm text-foreground">
-                          {new Date(d.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                          {new Date(d.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                         </div>
                         <div className="font-body text-xs text-muted-foreground mt-0.5">
                           {d.motivo || "Sin motivo"}

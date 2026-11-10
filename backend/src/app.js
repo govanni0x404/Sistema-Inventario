@@ -20,6 +20,8 @@ const listasPrecioRoutes = require("./routes/listasPrecio.routes");
 const consultasRoutes = require("./routes/consultas.routes");
 const bodegasRoutes = require("./routes/bodegas.routes");
 const auditoriaRoutes = require("./routes/auditoria.routes");
+const negocioRoutes = require("./routes/negocio.routes");
+const setupRoutes = require("./routes/setup.routes");
 const auth = require("./middleware/auth");
 const requireAdmin = require("./middleware/requireAdmin");
 const errorHandler = require("./middleware/errorHandler");
@@ -36,6 +38,7 @@ app.use(express.json({ limit: "5mb" })); // filas de importación masiva de prod
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/setup", setupRoutes);
 
 app.use("/api/productos", auth, productosRoutes);
 app.use("/api/clientes", auth, clientesRoutes);
@@ -55,6 +58,7 @@ app.use("/api/listas-precio", auth, listasPrecioRoutes);
 app.use("/api/consultas", auth, consultasRoutes);
 app.use("/api/bodegas", auth, bodegasRoutes);
 app.use("/api/auditoria", auth, requireAdmin, auditoriaRoutes);
+app.use("/api/negocio", auth, negocioRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Ruta no encontrada" }));
 app.use(errorHandler);

@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
+import { money } from "../lib/format";
 
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
@@ -60,7 +61,7 @@ export default function PrecioForm({
       <div className="flex justify-between font-body text-xs text-muted-foreground px-1">
         <span>Margen</span>
         <span className={`font-mono font-medium ${margen < 0 ? "text-destructive" : "text-primary"}`}>
-          ${margen.toFixed(2)}
+          {money(margen)}
           {margenPct !== null && ` (${margenPct.toFixed(0)}%)`}
         </span>
       </div>

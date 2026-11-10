@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
+import { LOCALE, money } from "../../lib/format";
 
 type Point = { fecha: string; total: number; cantidad: number };
 
@@ -10,7 +11,6 @@ const PAD_R = 12;
 const PAD_T = 12;
 const PAD_B = 28;
 
-const money = (n: number) => `$${Number(n || 0).toLocaleString("es-MX", { maximumFractionDigits: 0 })}`;
 
 function niceMax(value: number) {
   if (value <= 0) return 10;
@@ -55,7 +55,7 @@ export default function SalesLineChart({ data }: { data: Point[] }) {
 
   const activePoint = active !== null ? data[active] : null;
   const formatDia = (fecha: string) =>
-    new Date(`${fecha}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+    new Date(`${fecha}T00:00:00`).toLocaleDateString(LOCALE, { day: "numeric", month: "short" });
 
   return (
     <div ref={containerRef} className="relative w-full" onPointerLeave={() => setActive(null)}>

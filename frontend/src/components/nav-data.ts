@@ -17,6 +17,7 @@ import {
   LineChart,
   Warehouse,
   History,
+  Store,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Seccion } from "@/types/auth";
@@ -94,6 +95,12 @@ export const adminNavItems: NavItem[] = [
     seccion: "caja", // no aplica: el acceso real se resuelve por rol, no por permisos de sección
     label: "Permisos",
     icon: ShieldCheck,
+  },
+  {
+    to: "/negocio",
+    seccion: "caja", // no aplica: el acceso real se resuelve por rol, no por permisos de sección
+    label: "Datos del negocio",
+    icon: Store,
   },
   {
     to: "/auditoria",

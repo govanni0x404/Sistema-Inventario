@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { NegocioProvider } from "./context/NegocioContext";
 import { SidebarProvider } from "./context/SidebarContext";
 import RequireAuth from "./components/RequireAuth";
 import RequireSeccion from "./components/RequireSeccion";
@@ -24,14 +25,18 @@ import ListasPrecioPage from "./pages/ListasPrecioPage";
 import ConsultasPage from "./pages/ConsultasPage";
 import BodegasPage from "./pages/BodegasPage";
 import AuditoriaPage from "./pages/AuditoriaPage";
+import NegocioPage from "./pages/NegocioPage";
+import SetupPage from "./pages/SetupPage";
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <NegocioProvider>
         <SidebarProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/configuracion-inicial" element={<SetupPage />} />
           <Route
             element={
               <RequireAuth>
@@ -177,6 +182,14 @@ export default function App() {
               }
             />
             <Route
+              path="/negocio"
+              element={
+                <RequireAdmin>
+                  <NegocioPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
               path="/auditoria"
               element={
                 <RequireAdmin>
@@ -188,6 +201,7 @@ export default function App() {
           </Route>
         </Routes>
         </SidebarProvider>
+        </NegocioProvider>
       </AuthProvider>
     </BrowserRouter>
   );

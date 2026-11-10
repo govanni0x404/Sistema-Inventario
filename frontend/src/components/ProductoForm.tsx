@@ -14,8 +14,8 @@ import { DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import QuickCreatePopover from "./QuickCreatePopover";
 import { useAuth } from "../context/AuthContext";
+import { money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 type FormState = {
   sku: string;

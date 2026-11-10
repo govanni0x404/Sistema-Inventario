@@ -84,5 +84,10 @@ generar nuevas ni pedir confirmación interactiva), nunca `prisma migrate dev`.
       correcto y `NODE_ENV=production`.
 - [ ] Backend detrás de HTTPS (reverse proxy con `X-Forwarded-*`).
 - [ ] `npx prisma migrate deploy` ejecutado contra la base de datos de producción.
-- [ ] Contraseñas de los usuarios sembrados en `prisma/seed.js` (admin/cajero de prueba)
-      cambiadas o esos usuarios eliminados antes de ir a producción.
+- [ ] **No** correr `prisma/seed.js` en producción (crea usuarios de prueba con
+      contraseñas conocidas). Una instalación nueva se configura sola: al abrirla por
+      primera vez aparece la pantalla **"Bienvenido"** (`/configuracion-inicial`), que crea
+      el negocio, la bodega principal, las unidades, los tipos de turno y el primer admin.
+- [ ] Definir `SETUP_CLAVE` en `backend/.env` y dársela al cliente: sin ella nadie puede
+      completar la configuración inicial (evita que un tercero "reclame" la instalación
+      antes que el dueño). La pantalla solo funciona mientras no exista ningún usuario.

@@ -13,8 +13,8 @@ import TipoTurnoManager from "../components/TipoTurnoManager";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { exportarCsv } from "../lib/exportCsv";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function TurnosPage() {
   const { usuario } = useAuth();
@@ -52,8 +52,8 @@ export default function TurnosPage() {
       turnos.map((t) => ({
         Tipo: t.tipoTurno.nombre,
         Estado: t.estado,
-        Apertura: new Date(t.fechaApertura).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }),
-        Cierre: t.fechaCierre ? new Date(t.fechaCierre).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "",
+        Apertura: new Date(t.fechaApertura).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }),
+        Cierre: t.fechaCierre ? new Date(t.fechaCierre).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }) : "",
         "Usuario apertura": t.usuarioApertura?.nombre ?? "",
         "Usuario cierre": t.usuarioCierre?.nombre ?? "",
         "Monto inicial": t.montoInicial,
@@ -111,7 +111,7 @@ export default function TurnosPage() {
                   <TableRow key={t.id} className="cursor-pointer" onClick={() => abrirDetalle(t)}>
                     <TableCell className="font-body text-sm font-medium text-foreground">{t.tipoTurno.nombre}</TableCell>
                     <TableCell className="font-body text-xs text-muted-foreground">
-                      {new Date(t.fechaApertura).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                      {new Date(t.fechaApertura).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                     </TableCell>
                     <TableCell className="font-body text-xs text-muted-foreground">{t.usuarioApertura?.nombre ?? "—"}</TableCell>
                     <TableCell>
@@ -151,8 +151,8 @@ export default function TurnosPage() {
                   <div>
                     <DialogTitle>{detalle.tipoTurno.nombre}</DialogTitle>
                     <p className="font-body text-xs text-muted-foreground">
-                      {new Date(detalle.fechaApertura).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
-                      {detalle.fechaCierre && ` → ${new Date(detalle.fechaCierre).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}`}
+                      {new Date(detalle.fechaApertura).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
+                      {detalle.fechaCierre && ` → ${new Date(detalle.fechaCierre).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}`}
                     </p>
                   </div>
                 </div>

@@ -19,5 +19,6 @@ const loginLimiter = rateLimit({
 
 router.post("/login", loginLimiter, asyncHandler(controller.login));
 router.get("/me", auth, asyncHandler(controller.me));
+router.put("/password", auth, asyncHandler(controller.cambiarPassword));
 
 module.exports = router;

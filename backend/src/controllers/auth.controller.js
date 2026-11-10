@@ -31,7 +31,11 @@ async function login(req, res) {
   }
 
   const { email, password } = parsed.data;
-  const usuario = await prisma.usuario.findUnique({ where: { email }, include: { rol: true } });
+  // Sin distinguir mayúsculas: "Admin@Tienda.cl" y "admin@tienda.cl" son la misma cuenta.
+  const usuario = await prisma.usuario.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
+    include: { rol: true },
+  });
   if (!usuario) {
     await registrarAuditoria(prisma, { accion: "login_fallido", detalle: `correo no registrado: ${email}` });
     throw new HttpError(401, "Correo o contraseña incorrectos");
@@ -80,4 +84,29 @@ async function me(req, res) {
   res.json(await serializeUsuario(usuario));
 }
 
-module.exports = { login, me };
+const cambiarPasswordSchema = z.object({
+  actual: z.string().min(1, "Ingresa tu contraseña actual"),
+  nueva: z.string().min(8, "La nueva contraseña debe tener al menos 8 caracteres"),
+});
+
+// PUT /api/auth/password — cada usuario cambia SU propia contraseña (pide la actual).
+async function cambiarPassword(req, res) {
+  const parsed = cambiarPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
+  }
+  const { actual, nueva } = parsed.data;
+
+  const usuario = await prisma.usuario.findUnique({ where: { id: req.user.id } });
+  if (!usuario) throw new HttpError(401, "Sesión inválida");
+  if (!(await bcrypt.compare(actual, usuario.password))) {
+    throw new HttpError(400, "La contraseña actual no es correcta");
+  }
+  if (actual === nueva) throw new HttpError(400, "La nueva contraseña debe ser distinta a la actual");
+
+  await prisma.usuario.update({ where: { id: usuario.id }, data: { password: await bcrypt.hash(nueva, 10) } });
+  await registrarAuditoria(prisma, { accion: "password_cambiada", usuarioId: usuario.id, usuarioAfectadoId: usuario.id });
+  res.json({ ok: true });
+}
+
+module.exports = { login, me, cambiarPassword, serializeUsuario };

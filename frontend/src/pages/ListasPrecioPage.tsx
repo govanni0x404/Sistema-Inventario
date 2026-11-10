@@ -14,8 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function ListasPrecioPage() {
   const [listas, setListas] = useState<ListaPrecio[]>([]);
@@ -344,7 +344,7 @@ export default function ListasPrecioPage() {
                       {h.precioAnterior === null ? "Se fijó" : h.precioNuevo === null ? "Se quitó (vuelve al precio base)" : "Se cambió"}
                     </div>
                     <div className="text-muted-foreground truncate">
-                      {new Date(h.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                      {new Date(h.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                       {h.usuario && <> · {h.usuario.nombre}</>}
                     </div>
                   </div>

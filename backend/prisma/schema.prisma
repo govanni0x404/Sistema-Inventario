@@ -452,3 +452,19 @@ model VentaEnEsperaItem {
   @@index([ventaEnEsperaId])
   @@map("venta_en_espera_items")
 }
+
+// Datos del negocio que aparecen en el comprobante y en la app. Una sola fila (id = 1):
+// cada instalación es de una sola tienda.
+model Negocio {
+  id            Int      @id @default(1)
+  nombre        String
+  rut           String?
+  giro          String?
+  direccion     String?
+  telefono      String?
+  email         String?
+  mensajeTicket String?
+  actualizadoEn DateTime @updatedAt
+
+  @@map("negocio")
+}

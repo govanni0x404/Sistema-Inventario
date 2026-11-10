@@ -7,6 +7,7 @@ import RangoFechasSelector from "../components/RangoFechasSelector";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { LOCALE } from "../lib/format";
 
 const ETIQUETAS: Record<string, string> = {
   login_exitoso: "Inicio de sesión",
@@ -78,7 +79,7 @@ export default function AuditoriaPage() {
               {registros.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(r.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                    {new Date(r.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                   </TableCell>
                   <TableCell>
                     <Badge variant={esFallido(r.accion) ? "destructive" : "secondary"}>{etiqueta(r.accion)}</Badge>

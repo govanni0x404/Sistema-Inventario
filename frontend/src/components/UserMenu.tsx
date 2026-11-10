@@ -1,4 +1,5 @@
-import { ChevronsUpDown, LogOut } from "lucide-react";
+import { useState } from "react";
+import { ChevronsUpDown, KeyRound, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -9,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import CambiarPasswordDialog from "./CambiarPasswordDialog";
 
 const iniciales = (nombre: string) =>
   nombre
@@ -20,9 +22,11 @@ const iniciales = (nombre: string) =>
 
 export default function UserMenu({ collapsed }: { collapsed?: boolean }) {
   const { usuario, logout } = useAuth();
+  const [cambiandoPassword, setCambiandoPassword] = useState(false);
   if (!usuario) return null;
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
@@ -51,10 +55,15 @@ export default function UserMenu({ collapsed }: { collapsed?: boolean }) {
           <div className="font-body text-xs text-muted-foreground truncate">{usuario.email}</div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setCambiandoPassword(true)}>
+          <KeyRound size={15} /> Cambiar contraseña
+        </DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onClick={logout}>
           <LogOut size={15} /> Cerrar sesión
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <CambiarPasswordDialog open={cambiandoPassword} onClose={() => setCambiandoPassword(false)} />
+    </>
   );
 }

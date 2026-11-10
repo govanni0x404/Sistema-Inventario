@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function VueltoModal({ vuelto, onClose }: { vuelto: number | null; onClose: () => void }) {
   useEffect(() => {

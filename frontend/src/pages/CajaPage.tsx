@@ -28,8 +28,9 @@ import VentasEnEsperaDialog from "../components/VentasEnEsperaDialog";
 import MovimientoCajaDialog from "../components/MovimientoCajaDialog";
 import VueltoModal from "../components/VueltoModal";
 import { printTicket } from "../lib/printTicket";
+import { useNegocio } from "../context/NegocioContext";
+import { LOCALE, money, montoInput } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 type CartItem = { productoId: string; nombre: string; precio: number; cantidad: number; stockMax: number; descuento: number };
 
@@ -54,6 +55,7 @@ export default function CajaPage() {
   const [turno, setTurno] = useState<TurnoCaja | null | undefined>(undefined);
   const [mostrarCierre, setMostrarCierre] = useState(false);
   const [ventaCompletada, setVentaCompletada] = useState<Venta | null>(null);
+  const { negocio } = useNegocio();
   const [mostrarEspera, setMostrarEspera] = useState(false);
   const [mostrarMovimientoCaja, setMostrarMovimientoCaja] = useState(false);
   const [mostrarEnviar, setMostrarEnviar] = useState(false);
@@ -216,15 +218,15 @@ export default function CajaPage() {
       const num = Math.max(0, Math.min(total, Number(valor) || 0));
       const siguiente = [...prev];
       siguiente[idx] = { ...siguiente[idx], monto: valor === "" ? "" : String(num) };
-      siguiente[otro] = { ...siguiente[otro], monto: (total - num).toFixed(2) };
+      siguiente[otro] = { ...siguiente[otro], monto: montoInput(total - num) };
       return siguiente;
     });
   };
 
   const dividirPago = () => {
     setPagos((prev) => [
-      { ...prev[0], monto: total.toFixed(2) },
-      { metodoPago: prev[0].metodoPago === "efectivo" ? "tarjeta" : "efectivo", monto: "0.00" },
+      { ...prev[0], monto: montoInput(total) },
+      { metodoPago: prev[0].metodoPago === "efectivo" ? "tarjeta" : "efectivo", monto: "0" },
     ]);
   };
 
@@ -362,7 +364,7 @@ export default function CajaPage() {
           <div className="min-w-0">
             <div className="font-body text-sm font-medium text-foreground truncate">{turno.tipoTurno.nombre}</div>
             <div className="font-body text-xs text-muted-foreground truncate">
-              Abierto {new Date(turno.fechaApertura).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+              Abierto {new Date(turno.fechaApertura).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
               {turno.usuarioApertura && ` · ${turno.usuarioApertura.nombre}`}
             </div>
           </div>
@@ -463,7 +465,7 @@ export default function CajaPage() {
               </button>
             </div>
             <div className="text-[11px] opacity-60 mb-3">
-              {new Date().toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+              {new Date().toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
             </div>
 
             <Select value={clienteId || CLIENTE_GENERAL} onValueChange={(v) => setClienteId(v === CLIENTE_GENERAL ? "" : v)}>
@@ -623,7 +625,7 @@ export default function CajaPage() {
                         type="number"
                         min={0}
                         max={total}
-                        step="0.01"
+                        step="1"
                         value={p.monto}
                         onChange={(e) => setMontoPago(idx as 0 | 1, e.target.value)}
                         className="flex-1 bg-zinc-800 rounded px-1.5 py-1 text-right outline-none focus:ring-1 focus:ring-primary font-mono"
@@ -653,10 +655,10 @@ export default function CajaPage() {
                   <input
                     type="number"
                     min={0}
-                    step="0.01"
+                    step="1"
                     value={montoRecibido}
                     onChange={(e) => setMontoRecibido(e.target.value)}
-                    placeholder={montoEfectivoVenta.toFixed(2)}
+                    placeholder={montoInput(montoEfectivoVenta)}
                     className="flex-1 bg-zinc-800 rounded px-1.5 py-1 text-right outline-none focus:ring-1 focus:ring-primary font-mono"
                   />
                   {Number(montoRecibido) > montoEfectivoVenta && (
@@ -715,7 +717,7 @@ export default function CajaPage() {
                 <Button variant="outline" onClick={() => setVentaCompletada(null)}>
                   Nueva venta
                 </Button>
-                <Button onClick={() => printTicket(ventaCompletada)}>
+                <Button onClick={() => printTicket(ventaCompletada, negocio)}>
                   <Printer size={15} /> Imprimir ticket
                 </Button>
               </DialogFooter>

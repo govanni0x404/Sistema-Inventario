@@ -85,7 +85,7 @@ export default function AbrirTurnoCard({ onAbierto }: { onAbierto: (turno: Turno
                 value={montoInicial}
                 onChange={(e) => setMontoInicial(e.target.value.replace(/[^0-9.]/g, ""))}
                 inputMode="decimal"
-                placeholder="0.00"
+                placeholder="0"
                 autoFocus
               />
             </div>

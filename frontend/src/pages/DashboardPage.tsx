@@ -11,8 +11,8 @@ import { Input } from "@/components/ui/input";
 import StatTile from "../components/dashboard/StatTile";
 import SalesLineChart from "../components/dashboard/SalesLineChart";
 import MagnitudeBarChart from "../components/dashboard/MagnitudeBarChart";
+import { money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toLocaleString("es-MX", { maximumFractionDigits: 0 })}`;
 
 type RangoPreset = "1" | "7" | "30" | "90" | "custom";
 

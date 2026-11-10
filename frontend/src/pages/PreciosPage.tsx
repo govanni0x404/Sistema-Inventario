@@ -14,8 +14,8 @@ import PrecioForm from "../components/PrecioForm";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function PreciosPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
@@ -176,7 +176,7 @@ export default function PreciosPage() {
                               {historial.map((h) => (
                                 <div key={h.id} className="font-body text-xs">
                                   <div className="text-muted-foreground">
-                                    {new Date(h.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                                    {new Date(h.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                                     {h.usuario && <> · {h.usuario.nombre}</>}
                                   </div>
                                   <div className="flex gap-4 mt-0.5 font-mono">

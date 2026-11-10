@@ -17,6 +17,7 @@ import MovimientoForm from "../components/MovimientoForm";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
+import { LOCALE } from "../lib/format";
 
 export default function MovimientosPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
@@ -196,7 +197,7 @@ export default function MovimientosPage() {
                                       {m.origen === "venta" && <span className="text-muted-foreground"> · venta</span>}
                                     </div>
                                     <div className="text-muted-foreground truncate">
-                                      {new Date(m.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                                      {new Date(m.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                                       {m.usuario && <> · {m.usuario.nombre}</>}
                                       {m.motivo && <> · {m.motivo}</>}
                                     </div>

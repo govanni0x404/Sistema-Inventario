@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { LogIn } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { ApiError } from "../api/client";
+import { setupApi } from "../api/negocio";
+import { useNegocio } from "../context/NegocioContext";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -11,7 +13,17 @@ import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
   const { usuario, login } = useAuth();
+  const { negocio } = useNegocio();
   const location = useLocation();
+  // Instalación nueva (sin usuarios): se manda a la configuración inicial.
+  const [necesitaConfiguracion, setNecesitaConfiguracion] = useState(false);
+
+  useEffect(() => {
+    setupApi
+      .estado()
+      .then((e) => setNecesitaConfiguracion(e.necesitaConfiguracion))
+      .catch(() => setNecesitaConfiguracion(false));
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +33,7 @@ export default function LoginPage() {
     const from = (location.state as { from?: string })?.from || "/dashboard";
     return <Navigate to={from} replace />;
   }
+  if (necesitaConfiguracion) return <Navigate to="/configuracion-inicial" replace />;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -44,7 +57,7 @@ export default function LoginPage() {
               <LogIn size={18} />
             </span>
             <div>
-              <h1 className="font-display text-lg font-bold text-foreground leading-tight">Caja &amp; Inventario</h1>
+              <h1 className="font-display text-lg font-bold text-foreground leading-tight">{negocio.nombre}</h1>
               <p className="font-body text-xs text-muted-foreground">Inicia sesión para continuar</p>
             </div>
           </div>

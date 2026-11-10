@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function CerrarTurnoDialog({
   turno,
@@ -101,7 +101,7 @@ export default function CerrarTurnoDialog({
               value={montoContado}
               onChange={(e) => setMontoContado(e.target.value.replace(/[^0-9.]/g, ""))}
               inputMode="decimal"
-              placeholder="0.00"
+              placeholder="0"
               autoFocus
               required
             />

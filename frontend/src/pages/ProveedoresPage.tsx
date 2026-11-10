@@ -14,8 +14,8 @@ import EntityForm, { type FieldDef } from "../components/EntityForm";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
+import { money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 const fields: FieldDef[] = [
   { key: "nombre", label: "Nombre" },

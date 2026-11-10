@@ -7,6 +7,7 @@ const { sign } = require("../src/lib/jwt");
 async function resetDb() {
   await prisma.$transaction([
     prisma.registroAuditoria.deleteMany(),
+    prisma.negocio.deleteMany(),
     prisma.devolucionItem.deleteMany(),
     prisma.devolucion.deleteMany(),
     prisma.movimientoStock.deleteMany(),

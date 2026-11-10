@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { LOCALE } from "../lib/format";
 
 type ModalNuevo = { nombre: string; email: string; password: string; rol: Rol };
 type ModalEditar = { data: UsuarioAdmin; nombre: string; rol: Rol; activo: boolean };
@@ -176,7 +177,7 @@ export default function UsuariosPage() {
                     <Badge variant={u.activo ? "secondary" : "destructive"}>{u.activo ? "Activo" : "Inactivo"}</Badge>
                   </TableCell>
                   <TableCell className="font-body text-xs text-muted-foreground">
-                    {new Date(u.creadoEn).toLocaleDateString("es-MX", { dateStyle: "medium" })}
+                    {new Date(u.creadoEn).toLocaleDateString(LOCALE, { dateStyle: "medium" })}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1 justify-end">

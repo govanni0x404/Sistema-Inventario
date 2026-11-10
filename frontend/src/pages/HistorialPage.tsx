@@ -17,8 +17,8 @@ import VentaDetalleModal from "../components/VentaDetalleModal";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { exportarCsv } from "../lib/exportCsv";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 const METODOS: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
 const TODOS = "__todos__";
@@ -104,7 +104,7 @@ export default function HistorialPage() {
   const nombreCliente = (v: Venta) => v.cliente?.nombre || "Cliente general";
 
   const nombreTurno = (t: TurnoCaja) =>
-    `${t.tipoTurno.nombre} · ${new Date(t.fechaApertura).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}${
+    `${t.tipoTurno.nombre} · ${new Date(t.fechaApertura).toLocaleDateString(LOCALE, { day: "numeric", month: "short" })}${
       t.estado === "abierto" ? " (abierto)" : ""
     }`;
 
@@ -121,7 +121,7 @@ export default function HistorialPage() {
     exportarCsv(
       `historial-ventas-${hoyStr()}.csv`,
       ventas.map((v) => ({
-        Fecha: new Date(v.fecha).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }),
+        Fecha: new Date(v.fecha).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }),
         Cliente: nombreCliente(v),
         Turno: v.turnoCaja?.tipoTurno.nombre ?? "",
         "Método de pago": v.esCortesia ? `Cortesía (${v.motivoCortesia ?? ""})` : v.pagos.map((p) => p.metodoPago).join(" + "),
@@ -266,7 +266,7 @@ export default function HistorialPage() {
                 <TableRow key={v.id} className="cursor-pointer" onClick={() => setDetalle(v)}>
                   <TableCell className="font-body text-sm font-medium text-foreground">{nombreCliente(v)}</TableCell>
                   <TableCell className="font-body text-xs text-muted-foreground">
-                    {new Date(v.fecha).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                    {new Date(v.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                   </TableCell>
                   <TableCell className="font-body text-xs text-muted-foreground">{v.turnoCaja?.tipoTurno.nombre ?? "—"}</TableCell>
                   <TableCell>

@@ -8,6 +8,8 @@ type AuthState = {
   usuario: Usuario | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** Deja la sesión iniciada con un token ya obtenido (p. ej. tras la configuración inicial). */
+  iniciarSesion: (token: string, usuario: Usuario) => void;
   logout: () => void;
 };
 
@@ -39,13 +41,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const { token, usuario: u } = await authApi.login(email, password);
+  const iniciarSesion = (token: string, u: Usuario) => {
     setToken(token);
     setUsuario(u);
   };
 
-  return <AuthContext.Provider value={{ usuario, loading, login, logout }}>{children}</AuthContext.Provider>;
+  const login = async (email: string, password: string) => {
+    const { token, usuario: u } = await authApi.login(email, password);
+    iniciarSesion(token, u);
+  };
+
+  return (
+    <AuthContext.Provider value={{ usuario, loading, login, iniciarSesion, logout }}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

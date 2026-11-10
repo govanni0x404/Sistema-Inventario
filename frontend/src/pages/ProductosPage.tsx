@@ -15,8 +15,8 @@ import ProductoForm from "../components/ProductoForm";
 import ImportarProductosDialog from "../components/ImportarProductosDialog";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
+import { money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 type ModalState = { mode: "new" } | { mode: "edit"; data: Producto } | null;
 

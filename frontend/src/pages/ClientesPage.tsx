@@ -14,8 +14,8 @@ import EntityForm, { type FieldDef } from "../components/EntityForm";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 const fields: FieldDef[] = [
   { key: "nombre", label: "Nombre" },
@@ -224,7 +224,7 @@ export default function ClientesPage() {
                             {detalle.ventas.map((v) => (
                               <div key={v.id} className="flex justify-between font-mono text-xs text-muted-foreground">
                                 <span>
-                                  {new Date(v.fecha).toLocaleDateString("es-MX")} · {v.pagos.map((p) => p.metodoPago).join(" + ")} · {v.items.length} ítem(s)
+                                  {new Date(v.fecha).toLocaleDateString(LOCALE)} · {v.pagos.map((p) => p.metodoPago).join(" + ")} · {v.items.length} ítem(s)
                                 </span>
                                 <span className="text-primary font-semibold">{money(v.total)}</span>
                               </div>

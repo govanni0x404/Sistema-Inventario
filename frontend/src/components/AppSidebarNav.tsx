@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { navGroups, adminNavItems, categoriasNavItem } from "./nav-data";
 import { useAuth } from "@/context/AuthContext";
+import { useNegocio } from "@/context/NegocioContext";
 import { productosApi } from "@/api/productos";
 import {
   Tooltip,
@@ -14,6 +15,15 @@ import UserMenu from "./UserMenu";
 
 export default function AppSidebarNav({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const { usuario } = useAuth();
+  const { negocio } = useNegocio();
+  const iniciales =
+    negocio.nombre
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "MN";
   const [lowStockCount, setLowStockCount] = useState(0);
 
   useEffect(() => {
@@ -39,14 +49,14 @@ export default function AppSidebarNav({ collapsed = false, onNavigate }: { colla
     <div className="flex h-full flex-col">
       <div className={cn("flex items-center gap-2.5 px-3 py-4", collapsed && "justify-center px-2")}>
         <span className="flex items-center justify-center size-8 rounded-lg bg-primary text-primary-foreground font-display font-bold text-sm shrink-0">
-          CI
+          {iniciales}
         </span>
         {!collapsed && (
           <div className="min-w-0">
             <div className="font-display text-sm font-bold text-sidebar-foreground leading-tight truncate">
-              Caja &amp; Inventario
+              {negocio.nombre}
             </div>
-            <div className="font-body text-[11px] text-muted-foreground truncate">Sistema de inventario</div>
+            <div className="font-body text-[11px] text-muted-foreground truncate">Caja e inventario</div>
           </div>
         )}
       </div>

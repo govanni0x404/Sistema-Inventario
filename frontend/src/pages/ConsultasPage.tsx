@@ -13,8 +13,8 @@ import { exportarCsv } from "../lib/exportCsv";
 import MagnitudeBarChart from "../components/dashboard/MagnitudeBarChart";
 import HistorialPage from "./HistorialPage";
 import TurnosPage from "./TurnosPage";
+import { money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 function hoyStr() {
   const d = new Date();

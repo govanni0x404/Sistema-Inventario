@@ -6,8 +6,8 @@ import { ApiError } from "../api/client";
 import type { VentaEnEspera } from "../types/ventaEnEspera";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 function totalEstimado(v: VentaEnEspera) {
   const bruto = v.items.reduce((s, it) => s + it.producto.precioVenta * it.cantidad - it.descuento, 0);
@@ -79,7 +79,7 @@ export default function VentasEnEsperaDialog({
                   </div>
                   <div className="font-body text-xs text-muted-foreground mt-0.5">
                     {v.items.length} producto(s) · {money(totalEstimado(v))} ·{" "}
-                    {new Date(v.creadoEn).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" })}
+                    {new Date(v.creadoEn).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" })}
                     {v.usuario && ` · ${v.usuario.nombre}`}
                   </div>
                 </div>

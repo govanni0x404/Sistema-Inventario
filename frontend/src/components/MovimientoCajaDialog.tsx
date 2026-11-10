@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { LOCALE, money } from "../lib/format";
 
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function MovimientoCajaDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [movimientos, setMovimientos] = useState<MovimientoCaja[] | null>(null);
@@ -92,7 +92,7 @@ export default function MovimientoCajaDialog({ open, onClose }: { open: boolean;
           </div>
           <div className="space-y-1.5">
             <Label>Monto</Label>
-            <Input value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0.00" />
+            <Input value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" />
           </div>
           <div className="space-y-1.5">
             <Label>Motivo</Label>
@@ -120,7 +120,7 @@ export default function MovimientoCajaDialog({ open, onClose }: { open: boolean;
                   <div className="min-w-0">
                     <div className="text-foreground truncate">{m.motivo}</div>
                     <div className="text-muted-foreground mt-0.5">
-                      {new Date(m.fecha).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(m.fecha).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" })}
                       {m.usuario && ` · ${m.usuario.nombre}`}
                     </div>
                   </div>
