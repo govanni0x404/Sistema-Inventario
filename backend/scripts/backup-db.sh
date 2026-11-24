@@ -18,15 +18,28 @@ if [ -z "$DB_URL" ]; then
   exit 1
 fi
 
+RETENCION_DIAS="${RETENCION_DIAS:-30}"
+if [[ ! "$RETENCION_DIAS" =~ ^[0-9]+$ ]]; then
+  echo "Error: RETENCION_DIAS debe ser un número entero no negativo." >&2
+  exit 1
+fi
+
+umask 077
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/backups"
 mkdir -p "$DIR"
 
-ARCHIVO="$DIR/inventario_$(date +%Y%m%d_%H%M%S).dump"
+FECHA="$(date -u +%Y%m%d_%H%M%SZ)"
+TEMPORAL="$(mktemp "$DIR/.inventario_${FECHA}_XXXXXX")"
+trap 'rm -f -- "$TEMPORAL"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-pg_dump --format=custom --file="$ARCHIVO" "$DB_URL"
+ARCHIVO="$DIR/${TEMPORAL##*/.}.dump"
+pg_dump --format=custom --file="$TEMPORAL" "$DB_URL"
+pg_restore --file=- "$TEMPORAL" >/dev/null
+mv -- "$TEMPORAL" "$ARCHIVO"
 echo "Backup creado: $ARCHIVO"
 
-RETENCION_DIAS="${RETENCION_DIAS:-30}"
-find "$DIR" -name "inventario_*.dump" -mtime "+$RETENCION_DIAS" -print -delete
+find "$DIR" -type f -name "inventario_*.dump" -mtime "+$RETENCION_DIAS" -print -delete
 
-echo "Para restaurar: pg_restore --clean --if-exists --dbname=\"\$DATABASE_URL\" \"$ARCHIVO\""
+echo "Para restaurar en una base vacía: pg_restore --exit-on-error --single-transaction --dbname=\"\$DATABASE_URL\" \"$ARCHIVO\""

@@ -1,13 +1,9 @@
-import { Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useAuth } from "../context/AuthContext";
+import AccessDenied from "./AccessDenied";
 
 export default function RequireAdmin({ children }: { children: ReactNode }) {
   const { usuario } = useAuth();
 
-  if (usuario?.rol !== "admin") {
-    return <Navigate to="/caja" replace />;
-  }
-
-  return <>{children}</>;
+  return usuario?.rol === "admin" ? <>{children}</> : <AccessDenied />;
 }

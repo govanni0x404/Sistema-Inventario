@@ -333,7 +333,7 @@ export default function BodegasPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {bodegas
-                    .filter((b) => b.id !== seleccionada?.id)
+                    .filter((b) => b.activo && b.id !== seleccionada?.id)
                     .map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.nombre}

@@ -3,7 +3,7 @@ const prisma = require("../src/lib/prisma");
 const { sign } = require("../src/lib/jwt");
 
 // Vacía todas las tablas entre tests para que cada uno arranque de un estado limpio y
-// conocido. Seguro solo porque apunta a `inventario_test` (forzado por tests/setup.js).
+// conocido. tests/setup.js exige una base dedicada cuyo nombre termine en `_test`.
 async function resetDb() {
   await prisma.$transaction([
     prisma.registroAuditoria.deleteMany(),
@@ -11,12 +11,15 @@ async function resetDb() {
     prisma.devolucionItem.deleteMany(),
     prisma.devolucion.deleteMany(),
     prisma.movimientoStock.deleteMany(),
+    prisma.tomaInventario.deleteMany(),
     prisma.ventaEnEsperaItem.deleteMany(),
     prisma.ventaEnEspera.deleteMany(),
     prisma.ventaItem.deleteMany(),
     prisma.venta.deleteMany(),
     prisma.movimientoCaja.deleteMany(),
     prisma.turnoCaja.deleteMany(),
+    prisma.caja.deleteMany({ where: { principal: false } }),
+    prisma.caja.updateMany({ where: { principal: true }, data: { nombre: "Caja principal", fondoFijo: null, activa: true } }),
     prisma.tipoTurno.deleteMany(),
     prisma.historialPrecio.deleteMany(),
     prisma.historialPrecioLista.deleteMany(),

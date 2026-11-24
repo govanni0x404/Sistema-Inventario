@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { LOCALE } from "../lib/format";
 
 const ETIQUETAS: Record<string, string> = {
+  recuperacion_solicitada: "Solicitud de recuperación de clave",
   login_exitoso: "Inicio de sesión",
   login_fallido: "Inicio de sesión fallido",
   usuario_rol_cambiado: "Cambio de rol",

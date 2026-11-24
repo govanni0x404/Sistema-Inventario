@@ -1,5 +1,5 @@
 const prisma = require("../lib/prisma");
-const { inicioDeDia, finDeDia, claveDia, resolverRango } = require("../lib/rangoFechas");
+const { inicioDeDia, finDeDia, claveDia, resolverRango, sumarDias } = require("../lib/rangoFechas");
 
 // GET /api/dashboard?dias=7|30|90 o ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD — resumen agregado
 // para la pantalla principal. "Ventas de hoy" siempre es el día calendario actual (referencia
@@ -13,7 +13,6 @@ async function resumen(req, res) {
   const [
     ventasHoyAgg,
     ventasPeriodoAgg,
-    productosActivos,
     productos,
     ventasRango,
     ventasPorMetodoRaw,
@@ -21,7 +20,6 @@ async function resumen(req, res) {
   ] = await Promise.all([
     prisma.venta.aggregate({ where: { fecha: { gte: hoyInicio, lte: hoyFin }, esCortesia: false }, _sum: { total: true }, _count: true }),
     prisma.venta.aggregate({ where: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false }, _sum: { total: true }, _count: true }),
-    prisma.producto.count({ where: { activo: true } }),
     prisma.producto.findMany({
       where: { activo: true },
       select: { id: true, nombre: true, sku: true, stock: true, stockMinimo: true, precioCompra: true, unidad: { select: { nombre: true } } },
@@ -47,8 +45,8 @@ async function resumen(req, res) {
   // Bucketiza ventas del rango por día (en JS: el volumen es pequeño y evita SQL crudo).
   const porDiaMap = new Map();
   for (let i = 0; i < dias; i++) {
-    const d = new Date(rangoInicio.getTime() + i * 86400000);
-    porDiaMap.set(claveDia(d), { fecha: claveDia(d), total: 0, cantidad: 0 });
+    const fecha = claveDia(sumarDias(rangoInicio, i));
+    porDiaMap.set(fecha, { fecha, total: 0, cantidad: 0 });
   }
   for (const v of ventasRango) {
     const key = claveDia(v.fecha);
@@ -77,7 +75,7 @@ async function resumen(req, res) {
       ventasHoy: { total: Number(ventasHoyAgg._sum.total || 0), cantidad: ventasHoyAgg._count },
       ventasPeriodo: { total: ventasPeriodoTotal, cantidad: ventasPeriodoCount },
       ticketPromedioPeriodo: ventasPeriodoCount > 0 ? ventasPeriodoTotal / ventasPeriodoCount : 0,
-      productosActivos,
+      productosActivos: productos.length,
       productosStockBajo: stockBajo.length,
       valorInventario,
     },

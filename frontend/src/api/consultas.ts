@@ -5,9 +5,12 @@ import type {
   ProductosMargenResponse,
   VentasPorMetodoResponse,
   VentasPorUsuarioResponse,
+  DetalleReporteResponse,
+  DetallePago,
+  DetalleProducto,
 } from "../types/consulta";
 
-function qs(params?: ConsultaParams, extra?: Record<string, string | number>) {
+function qs(params?: ConsultaParams, extra?: Record<string, string | number | undefined>) {
   const q = new URLSearchParams();
   if (params?.desde && params?.hasta) {
     q.set("desde", params.desde);
@@ -15,7 +18,9 @@ function qs(params?: ConsultaParams, extra?: Record<string, string | number>) {
   } else if (params?.dias) {
     q.set("dias", String(params.dias));
   }
-  if (extra) for (const [k, v] of Object.entries(extra)) q.set(k, String(v));
+  if (extra) for (const [k, v] of Object.entries(extra)) {
+    if (v !== undefined && v !== "") q.set(k, String(v));
+  }
   const query = q.toString();
   return query ? `?${query}` : "";
 }
@@ -27,4 +32,8 @@ export const consultasApi = {
   ventasPorUsuario: (params?: ConsultaParams) => api.get<VentasPorUsuarioResponse>(`/consultas/ventas-por-usuario${qs(params)}`),
   productosMargen: (params?: ConsultaParams, limite?: number) =>
     api.get<ProductosMargenResponse>(`/consultas/productos-margen${qs(params, limite ? { limite } : undefined)}`),
+  detallePagos: (params: ConsultaParams, filtros: { metodo?: string; folio?: string }) =>
+    api.get<DetalleReporteResponse<DetallePago>>(`/consultas/detalle-pagos${qs(params, filtros)}`),
+  detalleProductos: (params: ConsultaParams, filtros: { producto?: string; folio?: string }) =>
+    api.get<DetalleReporteResponse<DetalleProducto>>(`/consultas/detalle-productos${qs(params, filtros)}`),
 };

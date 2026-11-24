@@ -4,7 +4,7 @@ export interface MovimientoStock {
   id: string;
   productoId: string;
   tipo: TipoMovimiento;
-  origen: "manual" | "venta" | "devolucion" | "transferencia";
+  origen: "manual" | "venta" | "devolucion" | "transferencia" | "inventario" | "ajuste";
   cantidad: number;
   stockResultante: number;
   motivo: string | null;
@@ -12,6 +12,7 @@ export interface MovimientoStock {
   usuarioId: string | null;
   usuario: { id: string; nombre: string } | null;
   bodegaId: string | null;
+  tomaInventarioId?: string | null;
   fecha: string;
 }
 

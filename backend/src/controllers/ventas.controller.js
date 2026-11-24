@@ -1,16 +1,28 @@
+const { createHash } = require("node:crypto");
+const { Prisma } = require("@prisma/client");
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { bodegaPrincipal, ajustarStockBodega } = require("../lib/stockBodega");
 const { bloquearTurnoCompartido } = require("../lib/turnoLock");
+const { buscarTurnoAbierto } = require("../lib/turnoAbierto");
 const { fechaDeQuery } = require("../lib/rangoFechas");
-
-const round2 = (n) => Math.round(n * 100) / 100;
+const { filtroFolio } = require("../lib/folioVenta");
+const { aCentavos, MAX_CENTAVOS, montoEnCentavos, proporcionRedondeada } = require("../lib/dinero");
 
 const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia"];
+const cantidadSchema = z.coerce.number().int().positive("La cantidad debe ser mayor a 0").max(2_147_483_647);
+const VENTA_INCLUDE = {
+  cliente: { select: { id: true, nombre: true } },
+  items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
+  turnoCaja: { select: { id: true, caja: { select: { nombre: true } }, tipoTurno: { select: { nombre: true } } } },
+  pagos: true,
+};
 
 const ventaSchema = z
   .object({
+    claveIdempotencia: z.string().uuid().transform((clave) => clave.toLowerCase()).optional(),
+    turnoCajaId: z.string().uuid().optional(),
     clienteId: z.string().uuid().optional().nullable(),
     listaPrecioId: z.string().uuid().optional().nullable(),
     esCortesia: z.boolean().optional().default(false),
@@ -19,7 +31,7 @@ const ventaSchema = z
       .array(
         z.object({
           metodoPago: z.enum(METODOS_PAGO, { errorMap: () => ({ message: "Método de pago inválido" }) }),
-          monto: z.coerce.number().positive("El monto del pago debe ser mayor a 0"),
+          monto: montoEnCentavos.refine((monto) => monto > 0, "El monto del pago debe ser mayor a 0"),
         })
       )
       .max(2, "Máximo 2 formas de pago por venta")
@@ -28,13 +40,13 @@ const ventaSchema = z
       })
       .optional()
       .default([]),
-    descuento: z.coerce.number().min(0, "El descuento no puede ser negativo").optional().default(0),
+    descuento: montoEnCentavos.optional().default(0),
     items: z
       .array(
         z.object({
           productoId: z.string().uuid(),
-          cantidad: z.coerce.number().int().positive("La cantidad debe ser mayor a 0"),
-          descuento: z.coerce.number().min(0, "El descuento no puede ser negativo").optional().default(0),
+          cantidad: cantidadSchema,
+          descuento: montoEnCentavos.optional().default(0),
         })
       )
       .min(1, "La venta debe tener al menos un producto"),
@@ -48,20 +60,21 @@ const ventaSchema = z
     path: ["motivoCortesia"],
   });
 
-function serializeVenta(venta) {
+function serializeVenta({ claveIdempotencia, huellaSolicitud, ...venta }, importesPorItem) {
   return {
     ...venta,
     subtotal: Number(venta.subtotal),
     descuento: Number(venta.descuento),
     total: Number(venta.total),
     pagos: venta.pagos?.map((p) => ({ ...p, monto: Number(p.monto) })),
-    items: venta.items.map((it) => ({
+    items: venta.items.map(({ costoUnitario, ...it }) => ({
       ...it,
       precioUnitario: Number(it.precioUnitario),
       descuento: Number(it.descuento),
       subtotal: Number(it.subtotal),
+      ...(importesPorItem && { importeCobrado: importesPorItem.get(it.id) / 100 }),
     })),
-    devoluciones: venta.devoluciones?.map((d) => (d.items ? serializeDevolucion(d) : d)),
+    devoluciones: venta.devoluciones?.map((d) => (d.items ? serializeDevolucion(d) : { ...d, total: Number(d.total) })),
   };
 }
 
@@ -79,6 +92,7 @@ const DEVOLUCION_INCLUDE = {
 };
 
 const devolucionSchema = z.object({
+  turnoCajaId: z.string().uuid().optional(),
   motivo: z.string().optional().nullable(),
   // Obligatorio solo si la venta se pagó con 2 formas de pago; si no, se usa la única que tuvo.
   metodoReembolso: z
@@ -89,11 +103,78 @@ const devolucionSchema = z.object({
     .array(
       z.object({
         ventaItemId: z.string().uuid(),
-        cantidad: z.coerce.number().int().positive("La cantidad debe ser mayor a 0"),
+        cantidad: cantidadSchema,
       })
     )
-    .min(1, "Debes indicar al menos un producto a devolver"),
+    .min(1, "Debes indicar al menos un producto a devolver")
+    .refine((items) => new Set(items.map((item) => item.ventaItemId)).size === items.length, {
+      message: "Indica una sola cantidad por producto de la venta",
+    }),
 });
+
+function ordenarItems(venta) {
+  return [...venta.items].sort((a, b) => a.productoId.localeCompare(b.productoId) || a.id.localeCompare(b.id));
+}
+
+// Distribuye el total cobrado entre líneas. El redondeo del importe acumulado
+// garantiza que la suma de las líneas coincide con el total del ticket.
+function importesDeVenta(venta, items) {
+  const total = venta.esCortesia ? 0 : aCentavos(venta.total);
+  const subtotales = items.map((it) => aCentavos(it.subtotal));
+  const sumaSubtotales = subtotales.reduce((suma, importe) => suma + importe, 0);
+  const pesos = sumaSubtotales > 0 ? subtotales : items.map((it) => it.cantidad);
+  const pesoTotal = pesos.reduce((suma, peso) => suma + peso, 0);
+  const importes = new Map();
+  let pesoAcumulado = 0;
+  let importeAcumulado = 0;
+  for (const [indice, item] of items.entries()) {
+    pesoAcumulado += pesos[indice];
+    const importe = proporcionRedondeada(total, pesoAcumulado, pesoTotal);
+    importes.set(item.id, importe - importeAcumulado);
+    importeAcumulado = importe;
+  }
+  return importes;
+}
+
+function calcularDevolucion(venta, cantidades) {
+  const items = ordenarItems(venta);
+  const importes = importesDeVenta(venta, items);
+  let debido = -venta.devoluciones.reduce((suma, dev) => suma + aCentavos(dev.total), 0);
+  const lineas = [];
+
+  for (const item of items) {
+    const devuelto = item.devolucionItems.reduce((suma, dev) => suma + dev.cantidad, 0);
+    const importe = importes.get(item.id);
+    const anterior = proporcionRedondeada(importe, Math.min(devuelto, item.cantidad), item.cantidad);
+    debido += anterior;
+
+    const cantidad = cantidades.get(item.id);
+    if (cantidad === undefined) continue;
+    cantidades.delete(item.id);
+    const disponible = item.cantidad - devuelto;
+    if (cantidad > disponible) {
+      throw new HttpError(409, `Cantidad a devolver excede lo disponible (disponible: ${disponible})`);
+    }
+    lineas.push({
+      ventaItemId: item.id,
+      productoId: item.productoId,
+      cantidad,
+      incremento: proporcionRedondeada(importe, devuelto + cantidad, item.cantidad) - anterior,
+    });
+  }
+  if (cantidades.size > 0) throw new HttpError(404, "Producto de venta no encontrado");
+
+  // Compensa los redondeos de devoluciones previas sin generar importes negativos.
+  let total = 0;
+  const itemsData = lineas.map(({ incremento, ...linea }) => {
+    debido += incremento;
+    const importe = Math.max(0, debido);
+    debido -= importe;
+    total += importe;
+    return { ...linea, subtotal: importe / 100 };
+  });
+  return { total: total / 100, itemsData };
+}
 
 // GET /api/ventas?fecha=YYYY-MM-DD&desde=YYYY-MM-DD&hasta=YYYY-MM-DD&clienteId=&metodoPago=&turnoCajaId=
 // `fecha` (un solo día) tiene prioridad sobre `desde`/`hasta` (rango) si ambos llegan.
@@ -103,8 +184,8 @@ const LIMITE_VENTAS_DEFECTO = 1000;
 const LIMITE_VENTAS_MAXIMO = 5000;
 
 async function listar(req, res) {
-  const { fecha, desde, hasta, clienteId, metodoPago, turnoCajaId } = req.query;
-  const where = {};
+  const { fecha, desde, hasta, clienteId, metodoPago, turnoCajaId, folio, tipo } = req.query;
+  const where = filtroFolio(folio);
   const limitePedido = parseInt(req.query.limite, 10);
   const limite = Number.isFinite(limitePedido) && limitePedido > 0
     ? Math.min(limitePedido, LIMITE_VENTAS_MAXIMO)
@@ -113,6 +194,9 @@ async function listar(req, res) {
   if (clienteId) where.clienteId = String(clienteId);
   if (metodoPago) where.pagos = { some: { metodoPago: String(metodoPago) } };
   if (turnoCajaId) where.turnoCajaId = String(turnoCajaId);
+  if (tipo === "cortesia") where.esCortesia = true;
+  if (tipo === "cobrada") where.esCortesia = false;
+  if (tipo === "con-devolucion") where.devoluciones = { some: {} };
   if (fecha) {
     const inicio = fechaDeQuery(fecha, { nombre: "fecha" });
     const fin = fechaDeQuery(fecha, { nombre: "fecha", finDelDia: true });
@@ -126,17 +210,14 @@ async function listar(req, res) {
   const ventas = await prisma.venta.findMany({
     where,
     include: {
-      cliente: { select: { id: true, nombre: true } },
-      items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
-      turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
-      devoluciones: { select: { id: true } },
-      pagos: true,
+      ...VENTA_INCLUDE,
+      devoluciones: { select: { id: true, total: true } },
     },
-    orderBy: { fecha: "desc" },
+    orderBy: [{ fecha: "desc" }, { id: "desc" }],
     take: limite,
   });
 
-  res.json(ventas.map(serializeVenta));
+  res.json(ventas.map((venta) => serializeVenta(venta)));
 }
 
 // GET /api/ventas/:id
@@ -144,15 +225,12 @@ async function obtener(req, res) {
   const venta = await prisma.venta.findUnique({
     where: { id: req.params.id },
     include: {
-      cliente: { select: { id: true, nombre: true } },
-      items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
-      turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
+      ...VENTA_INCLUDE,
       devoluciones: { include: DEVOLUCION_INCLUDE, orderBy: { fecha: "desc" } },
-      pagos: true,
     },
   });
   if (!venta) throw new HttpError(404, "Venta no encontrada");
-  res.json(serializeVenta(venta));
+  res.json(serializeVenta(venta, importesDeVenta(venta, ordenarItems(venta))));
 }
 
 // POST /api/ventas — crea la venta, descuenta stock; todo en una transacción atómica.
@@ -161,7 +239,10 @@ async function crear(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { clienteId, listaPrecioId, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia } = parsed.data;
+  const {
+    claveIdempotencia, turnoCajaId, clienteId, listaPrecioId, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia,
+  } = parsed.data;
+  const usuarioId = req.user.id;
 
   // Sumar cantidades y descuentos si el mismo producto aparece más de una vez en el ticket.
   const cantidadPorProducto = new Map();
@@ -171,106 +252,146 @@ async function crear(req, res) {
     descuentoPorProducto.set(item.productoId, (descuentoPorProducto.get(item.productoId) || 0) + item.descuento);
   }
 
-  if (clienteId) {
-    const cliente = await prisma.cliente.findUnique({ where: { id: clienteId } });
-    if (!cliente) throw new HttpError(404, "Cliente no encontrado");
-  }
-
-  // Lista de precios elegida en Caja: sus precios reemplazan a Producto.precioVenta.
-  // Los productos sin fila en la lista se cobran a su precio base.
-  const precioListaPorProducto = new Map();
-  if (listaPrecioId) {
-    const lista = await prisma.listaPrecio.findUnique({ where: { id: listaPrecioId } });
-    if (!lista || !lista.activo) throw new HttpError(404, "Lista de precios no encontrada o inactiva");
-    const precios = await prisma.precioLista.findMany({
-      where: { listaPrecioId, productoId: { in: [...cantidadPorProducto.keys()] } },
-    });
-    for (const p of precios) precioListaPorProducto.set(p.productoId, Number(p.precio));
-  }
+  const productoIds = [...cantidadPorProducto.keys()].sort();
+  const huellaSolicitud = claveIdempotencia ? createHash("sha256").update(JSON.stringify({
+    turnoCajaId,
+    clienteId: clienteId ?? null,
+    listaPrecioId: listaPrecioId ?? null,
+    esCortesia,
+    motivoCortesia: esCortesia ? motivoCortesia : null,
+    descuentoTicket,
+    pagos: esCortesia ? [] : [...pagos].sort((a, b) => a.metodoPago.localeCompare(b.metodoPago)),
+    items: productoIds.map((id) => [id, cantidadPorProducto.get(id), descuentoPorProducto.get(id)]),
+  })).digest("hex") : null;
 
   const venta = await prisma.$transaction(async (tx) => {
+    if (claveIdempotencia) {
+      const claveUsuario = `${usuarioId}:${claveIdempotencia}`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(72100002, hashtext(${claveUsuario}))::text`;
+      const existente = await tx.venta.findUnique({
+        where: { usuarioId_claveIdempotencia: { usuarioId, claveIdempotencia } },
+        include: VENTA_INCLUDE,
+      });
+      if (existente) {
+        if (existente.huellaSolicitud !== huellaSolicitud) {
+          throw new HttpError(409, "Esta clave ya corresponde a una venta con otros datos");
+        }
+        return existente;
+      }
+    }
+
     await bloquearTurnoCompartido(tx);
-    const turnoAbierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
+    const turnoAbierto = await buscarTurnoAbierto(tx, { turnoCajaId });
     if (!turnoAbierto) {
       throw new HttpError(409, "Debes abrir un turno de caja antes de vender");
     }
 
-    const bodega = await bodegaPrincipal(tx);
-    const productoIds = [...cantidadPorProducto.keys()];
+    if (clienteId) {
+      const cliente = await tx.cliente.findUnique({ where: { id: clienteId } });
+      if (!cliente) throw new HttpError(404, "Cliente no encontrado");
+    }
+
+    const precioListaPorProducto = new Map();
+    if (listaPrecioId) {
+      const lista = await tx.listaPrecio.findUnique({ where: { id: listaPrecioId } });
+      if (!lista || !lista.activo) throw new HttpError(404, "Lista de precios no encontrada o inactiva");
+      const precios = await tx.precioLista.findMany({ where: { listaPrecioId, productoId: { in: productoIds } } });
+      for (const p of precios) precioListaPorProducto.set(p.productoId, aCentavos(p.precio));
+    }
+
+    await tx.$queryRaw`
+      SELECT "id" FROM "productos" WHERE "id" IN (${Prisma.join(productoIds)})
+      ORDER BY "id" COLLATE "C" FOR NO KEY UPDATE
+    `;
     const productos = await tx.producto.findMany({ where: { id: { in: productoIds } } });
+    const productoPorId = new Map(productos.map((producto) => [producto.id, producto]));
 
     let subtotalVenta = 0;
     const itemsData = [];
     const stockResultantePorProducto = new Map();
 
-    for (const [productoId, cantidad] of cantidadPorProducto) {
-      const producto = productos.find((p) => p.id === productoId);
+    for (const productoId of productoIds) {
+      const cantidad = cantidadPorProducto.get(productoId);
+      const producto = productoPorId.get(productoId);
       if (!producto || !producto.activo) {
         throw new HttpError(404, `Producto no encontrado o inactivo (${productoId})`);
       }
-      if (producto.stock < cantidad) {
+      if (!producto.ventaPublico) {
+        throw new HttpError(409, `"${producto.nombre}" no está habilitado para venta al público`);
+      }
+      if (producto.inventariable && producto.stock < cantidad) {
         throw new HttpError(409, `Stock insuficiente para "${producto.nombre}" (disponible: ${producto.stock})`);
       }
 
-      const precioUnitario = precioListaPorProducto.has(productoId)
-        ? precioListaPorProducto.get(productoId)
-        : Number(producto.precioVenta);
+      const precioUnitario = precioListaPorProducto.get(productoId) ?? aCentavos(producto.precioVenta);
       const bruto = precioUnitario * cantidad;
       const descuentoItem = descuentoPorProducto.get(productoId) || 0;
       if (descuentoItem > bruto) {
-        throw new HttpError(400, `El descuento de "${producto.nombre}" no puede superar su subtotal (${bruto})`);
+        throw new HttpError(400, `El descuento de "${producto.nombre}" no puede superar su subtotal (${bruto / 100})`);
       }
       const subtotal = bruto - descuentoItem;
       subtotalVenta += subtotal;
-      itemsData.push({ productoId, cantidad, precioUnitario, descuento: descuentoItem, subtotal });
-
-      // Guard atómico: si el stock cambió entre la lectura y este punto, la actualización no aplica.
-      const resultado = await tx.producto.updateMany({
-        where: { id: productoId, stock: { gte: cantidad } },
-        data: { stock: { decrement: cantidad } },
-      });
-      if (resultado.count === 0) {
-        throw new HttpError(409, `Stock insuficiente para "${producto.nombre}"`);
+      if (subtotalVenta > MAX_CENTAVOS || descuentoItem > MAX_CENTAVOS) {
+        throw new HttpError(400, "El importe del ticket supera el máximo permitido");
       }
-      await ajustarStockBodega(tx, bodega.id, productoId, -cantidad);
-      stockResultantePorProducto.set(productoId, producto.stock - cantidad);
+      itemsData.push({
+        productoId,
+        inventariable: producto.inventariable,
+        cantidad,
+        precioUnitario: precioUnitario / 100,
+        costoUnitario: producto.precioCompra,
+        descuento: descuentoItem / 100,
+        subtotal: subtotal / 100,
+      });
     }
 
     if (descuentoTicket > subtotalVenta) {
-      throw new HttpError(400, `El descuento no puede superar el subtotal del ticket (${subtotalVenta})`);
+      throw new HttpError(400, `El descuento no puede superar el subtotal del ticket (${subtotalVenta / 100})`);
     }
     const total = subtotalVenta - descuentoTicket;
 
     if (!esCortesia) {
       const sumaPagos = pagos.reduce((s, p) => s + p.monto, 0);
-      if (Math.abs(sumaPagos - total) > 0.01) {
-        throw new HttpError(400, `La suma de los pagos (${sumaPagos.toFixed(2)}) no coincide con el total (${total.toFixed(2)})`);
+      if (sumaPagos !== total) {
+        throw new HttpError(400, `La suma de los pagos (${(sumaPagos / 100).toFixed(2)}) no coincide con el total (${(total / 100).toFixed(2)})`);
       }
+    }
+
+    const itemsConStock = itemsData.filter((item) => item.inventariable);
+    const bodega = itemsConStock.length ? await bodegaPrincipal(tx) : null;
+    for (const { productoId, cantidad } of itemsConStock) {
+      const resultado = await tx.producto.updateMany({
+        where: { id: productoId, activo: true, stock: { gte: cantidad } },
+        data: { stock: { decrement: cantidad } },
+      });
+      if (resultado.count === 0) {
+        throw new HttpError(409, `Stock insuficiente para "${productoPorId.get(productoId).nombre}"`);
+      }
+      await ajustarStockBodega(tx, bodega.id, productoId, -cantidad);
+      const { stock } = await tx.producto.findUniqueOrThrow({ where: { id: productoId }, select: { stock: true } });
+      stockResultantePorProducto.set(productoId, stock);
     }
 
     const ventaCreada = await tx.venta.create({
       data: {
         clienteId: clienteId || null,
-        subtotal: subtotalVenta,
-        descuento: descuentoTicket,
-        total,
+        subtotal: subtotalVenta / 100,
+        descuento: descuentoTicket / 100,
+        total: total / 100,
         esCortesia,
         motivoCortesia: esCortesia ? motivoCortesia.trim() : null,
-        usuarioId: req.user?.id,
+        usuarioId,
+        claveIdempotencia,
+        huellaSolicitud,
         turnoCajaId: turnoAbierto.id,
         items: { create: itemsData },
-        ...(esCortesia ? {} : { pagos: { create: pagos.map((p) => ({ metodoPago: p.metodoPago, monto: p.monto })) } }),
+        ...(esCortesia ? {} : { pagos: { create: pagos.map((p) => ({ metodoPago: p.metodoPago, monto: p.monto / 100 })) } }),
       },
-      include: {
-        cliente: { select: { id: true, nombre: true } },
-        items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
-        turnoCaja: { select: { id: true, tipoTurno: { select: { nombre: true } } } },
-        pagos: true,
-      },
+      include: VENTA_INCLUDE,
     });
 
     // Registro de auditoría: cada venta deja su propio rastro en el historial de movimientos de stock.
-    for (const item of itemsData) {
+    for (const item of itemsConStock) {
       await tx.movimientoStock.create({
         data: {
           productoId: item.productoId,
@@ -279,14 +400,14 @@ async function crear(req, res) {
           cantidad: item.cantidad,
           stockResultante: stockResultantePorProducto.get(item.productoId),
           ventaId: ventaCreada.id,
-          usuarioId: req.user?.id,
+          usuarioId,
           bodegaId: bodega.id,
         },
       });
     }
 
     return ventaCreada;
-  });
+  }, { isolationLevel: "ReadCommitted" });
 
   res.status(201).json(serializeVenta(venta));
 }
@@ -298,11 +419,13 @@ async function crearDevolucion(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { motivo, items, metodoReembolso: metodoPedido } = parsed.data;
+  const { motivo, items, turnoCajaId, metodoReembolso: metodoPedido } = parsed.data;
   const ventaId = req.params.id;
 
   const devolucion = await prisma.$transaction(async (tx) => {
     await bloquearTurnoCompartido(tx);
+    // Las devoluciones de un mismo ticket consultan las cantidades una a la vez.
+    await tx.$queryRaw`SELECT id FROM ventas WHERE id = ${ventaId} FOR NO KEY UPDATE`;
     const venta = await tx.venta.findUnique({
       where: { id: ventaId },
       include: {
@@ -316,58 +439,32 @@ async function crearDevolucion(req, res) {
     // Cómo se reembolsa: una cortesía no se pagó, así que no hay reembolso de dinero.
     let metodoReembolso = null;
     if (!venta.esCortesia) {
-      if (metodoPedido) metodoReembolso = metodoPedido;
-      else if (venta.pagos.length === 1) metodoReembolso = venta.pagos[0].metodoPago;
-      else throw new HttpError(400, "La venta se pagó con 2 formas de pago: indica el método de reembolso");
+      if (venta.pagos.length === 1) {
+        metodoReembolso = venta.pagos[0].metodoPago;
+        if (metodoPedido && metodoPedido !== metodoReembolso) {
+          throw new HttpError(400, "Usa el método de pago original para esta devolución");
+        }
+      } else {
+        if (!metodoPedido) throw new HttpError(400, "Indica el método de reembolso");
+        if (venta.pagos.length > 0 && !venta.pagos.some((pago) => pago.metodoPago === metodoPedido)) {
+          throw new HttpError(400, "Selecciona uno de los métodos de pago del ticket");
+        }
+        metodoReembolso = metodoPedido;
+      }
     }
 
     // El efectivo devuelto sale de la caja del turno abierto (y se resta en su arqueo).
-    const turnoAbierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
+    const turnoAbierto = await buscarTurnoAbierto(tx, { turnoCajaId });
+    if (turnoCajaId && !turnoAbierto) throw new HttpError(409, "El turno seleccionado ya no está abierto");
     if (metodoReembolso === "efectivo" && !turnoAbierto) {
       throw new HttpError(409, "Abre un turno de caja para devolver efectivo");
     }
 
-    // Lo realmente cobrado por unidad: subtotal del ítem (ya con su descuento), prorrateado
-    // por el descuento del ticket (total / subtotal de la venta).
-    const factorTicket = Number(venta.subtotal) > 0 ? Number(venta.total) / Number(venta.subtotal) : 0;
-
-    const bodega = await bodegaPrincipal(tx);
-    let total = 0;
-    const itemsData = [];
-    const stockResultantePorProducto = new Map();
-
-    for (const { ventaItemId, cantidad } of items) {
-      const ventaItem = venta.items.find((it) => it.id === ventaItemId);
-      if (!ventaItem) throw new HttpError(404, `Producto de venta no encontrado (${ventaItemId})`);
-
-      const yaDevuelto = ventaItem.devolucionItems.reduce((sum, di) => sum + di.cantidad, 0);
-      const disponible = ventaItem.cantidad - yaDevuelto;
-      if (cantidad > disponible) {
-        throw new HttpError(409, `Cantidad a devolver excede lo disponible (disponible: ${disponible})`);
-      }
-
-      const pagadoPorUnidad = (Number(ventaItem.subtotal) / ventaItem.cantidad) * factorTicket;
-      const subtotal = venta.esCortesia ? 0 : round2(pagadoPorUnidad * cantidad);
-      total += subtotal;
-      itemsData.push({ ventaItemId, cantidad, subtotal, productoId: ventaItem.productoId });
-
-      const producto = await tx.producto.update({
-        where: { id: ventaItem.productoId },
-        data: { stock: { increment: cantidad } },
-      });
-      await ajustarStockBodega(tx, bodega.id, ventaItem.productoId, cantidad);
-      stockResultantePorProducto.set(ventaItem.productoId, producto.stock);
-    }
-
-    // Por redondeo, la suma de las devoluciones nunca debe superar lo cobrado en la venta.
-    const yaReembolsado = venta.devoluciones.reduce((s, d) => s + Number(d.total), 0);
-    const maximo = round2(Math.max(0, (venta.esCortesia ? 0 : Number(venta.total)) - yaReembolsado));
-    total = round2(total);
-    if (total > maximo) {
-      const ultimo = itemsData[itemsData.length - 1];
-      ultimo.subtotal = round2(ultimo.subtotal - (total - maximo));
-      total = maximo;
-    }
+    const cantidades = new Map(items.map((it) => [it.ventaItemId, it.cantidad]));
+    const { total, itemsData } = calcularDevolucion(venta, cantidades);
+    const inventariables = new Set(venta.items.filter((item) => item.inventariable).map((item) => item.id));
+    const itemsConStock = itemsData.filter((item) => inventariables.has(item.ventaItemId));
+    const bodega = itemsConStock.length ? await bodegaPrincipal(tx) : null;
 
     const devolucionCreada = await tx.devolucion.create({
       data: {
@@ -385,14 +482,20 @@ async function crearDevolucion(req, res) {
     });
 
     // Registro de auditoría: la devolución también deja su rastro en movimientos de stock.
-    for (const item of itemsData) {
+    for (const { productoId, cantidad } of itemsConStock) {
+      const { stock } = await tx.producto.update({
+        where: { id: productoId },
+        data: { stock: { increment: cantidad } },
+        select: { stock: true },
+      });
+      await ajustarStockBodega(tx, bodega.id, productoId, cantidad);
       await tx.movimientoStock.create({
         data: {
-          productoId: item.productoId,
+          productoId,
           tipo: "entrada",
           origen: "devolucion",
-          cantidad: item.cantidad,
-          stockResultante: stockResultantePorProducto.get(item.productoId),
+          cantidad,
+          stockResultante: stock,
           ventaId,
           usuarioId: req.user?.id,
           bodegaId: bodega.id,
@@ -401,7 +504,7 @@ async function crearDevolucion(req, res) {
     }
 
     return devolucionCreada;
-  });
+  }, { isolationLevel: "ReadCommitted" });
 
   res.status(201).json(serializeDevolucion(devolucion));
 }

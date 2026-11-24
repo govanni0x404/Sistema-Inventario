@@ -2,7 +2,7 @@ import { api } from "./client";
 import type { TurnoCaja, AbrirTurnoInput, CerrarTurnoInput } from "../types/turno";
 
 export const turnosApi = {
-  actual: () => api.get<TurnoCaja | null>("/turnos/actual"),
+  actual: (cajaId: string) => api.get<TurnoCaja | null>(`/turnos/actual?cajaId=${encodeURIComponent(cajaId)}`),
   listar: (params?: { estado?: string; desde?: string; hasta?: string }) => {
     const qs = new URLSearchParams();
     if (params?.estado) qs.set("estado", params.estado);

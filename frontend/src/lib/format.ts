@@ -12,6 +12,8 @@ const formatoMoneda = new Intl.NumberFormat(LOCALE, {
 /** $12.345 — pesos chilenos, sin decimales. */
 export const money = (n: number) => formatoMoneda.format(Number(n || 0));
 
+export const aCentavos = (monto: number) => Math.round(monto * 100);
+
 /** Valor para un <input> de monto: entero si no tiene centavos, si no con 2 decimales. */
 export const montoInput = (n: number) => {
   const r = Math.round(n * 100) / 100;

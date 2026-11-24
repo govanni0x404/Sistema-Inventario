@@ -34,7 +34,7 @@ export default function UserMenu({ collapsed }: { collapsed?: boolean }) {
           aria-label="Menú de usuario"
         >
           <Avatar className="size-8 shrink-0">
-            <AvatarFallback className="bg-primary/15 text-primary font-display text-xs">
+            <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground font-display text-xs">
               {iniciales(usuario.nombre)}
             </AvatarFallback>
           </Avatar>
@@ -42,9 +42,9 @@ export default function UserMenu({ collapsed }: { collapsed?: boolean }) {
             <>
               <div className="min-w-0 flex-1">
                 <div className="font-body text-xs font-medium text-sidebar-foreground truncate">{usuario.nombre}</div>
-                <div className="font-body text-[11px] text-muted-foreground capitalize">{usuario.rol}</div>
+                <div className="font-body text-[11px] text-sidebar-muted capitalize">{usuario.rol}</div>
               </div>
-              <ChevronsUpDown size={14} className="text-muted-foreground shrink-0" />
+              <ChevronsUpDown size={14} className="text-sidebar-muted shrink-0" />
             </>
           )}
         </button>

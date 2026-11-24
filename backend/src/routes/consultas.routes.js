@@ -9,5 +9,7 @@ router.get("/productos-top", requireSeccion("consultas"), asyncHandler(controlle
 router.get("/ventas-por-metodo", requireSeccion("consultas"), asyncHandler(controller.ventasPorMetodo));
 router.get("/ventas-por-usuario", requireSeccion("consultas"), asyncHandler(controller.ventasPorUsuario));
 router.get("/productos-margen", requireSeccion("consultas"), asyncHandler(controller.productosMargen));
+router.get("/detalle-pagos", requireSeccion("consultas"), asyncHandler(controller.detallePagos));
+router.get("/detalle-productos", requireSeccion("consultas"), asyncHandler(controller.detalleProductos));
 
 module.exports = router;

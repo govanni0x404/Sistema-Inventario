@@ -10,6 +10,8 @@ export const ventasApi = {
     metodoPago?: string;
     turnoCajaId?: string;
     limite?: number;
+    folio?: string;
+    tipo?: string;
   }) => {
     const qs = new URLSearchParams();
     if (params?.fecha) qs.set("fecha", params.fecha);
@@ -19,6 +21,8 @@ export const ventasApi = {
     if (params?.metodoPago) qs.set("metodoPago", params.metodoPago);
     if (params?.turnoCajaId) qs.set("turnoCajaId", params.turnoCajaId);
     if (params?.limite) qs.set("limite", String(params.limite));
+    if (params?.folio) qs.set("folio", params.folio);
+    if (params?.tipo) qs.set("tipo", params.tipo);
     const query = qs.toString();
     return api.get<Venta[]>(`/ventas${query ? `?${query}` : ""}`);
   },

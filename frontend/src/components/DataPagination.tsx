@@ -39,7 +39,7 @@ export default function DataPagination({
         {from}–{to} de {totalItems}
       </p>
       <div className="flex items-center gap-1">
-        <Button variant="outline" size="icon" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Página anterior">
+        <Button type="button" variant="outline" size="icon" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Página anterior">
           <ChevronLeft size={15} />
         </Button>
         {pageNumbers(page, totalPages).map((p, i) =>
@@ -50,6 +50,7 @@ export default function DataPagination({
           ) : (
             <Button
               key={p}
+              type="button"
               variant="outline"
               size="icon"
               className={cn("font-body text-xs", p === page && "bg-primary text-primary-foreground border-primary hover:bg-primary/90 hover:text-primary-foreground")}
@@ -59,7 +60,7 @@ export default function DataPagination({
             </Button>
           )
         )}
-        <Button variant="outline" size="icon" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Página siguiente">
+        <Button type="button" variant="outline" size="icon" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Página siguiente">
           <ChevronRight size={15} />
         </Button>
       </div>

@@ -50,6 +50,7 @@ export default function TurnosPage() {
     exportarCsv(
       `turnos-caja-${new Date().toISOString().slice(0, 10)}.csv`,
       turnos.map((t) => ({
+        Caja: t.caja.nombre,
         Tipo: t.tipoTurno.nombre,
         Estado: t.estado,
         Apertura: new Date(t.fechaApertura).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }),
@@ -99,6 +100,7 @@ export default function TurnosPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Caja</TableHead>
                   <TableHead>Turno</TableHead>
                   <TableHead>Apertura</TableHead>
                   <TableHead>Usuario</TableHead>
@@ -109,6 +111,7 @@ export default function TurnosPage() {
               <TableBody>
                 {pageItems.map((t) => (
                   <TableRow key={t.id} className="cursor-pointer" onClick={() => abrirDetalle(t)}>
+                    <TableCell className="text-sm font-medium">{t.caja.nombre}</TableCell>
                     <TableCell className="font-body text-sm font-medium text-foreground">{t.tipoTurno.nombre}</TableCell>
                     <TableCell className="font-body text-xs text-muted-foreground">
                       {new Date(t.fechaApertura).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
@@ -149,7 +152,7 @@ export default function TurnosPage() {
                     <Clock size={17} />
                   </span>
                   <div>
-                    <DialogTitle>{detalle.tipoTurno.nombre}</DialogTitle>
+                    <DialogTitle>{detalle.caja.nombre} · {detalle.tipoTurno.nombre}</DialogTitle>
                     <p className="font-body text-xs text-muted-foreground">
                       {new Date(detalle.fechaApertura).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                       {detalle.fechaCierre && ` → ${new Date(detalle.fechaCierre).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}`}

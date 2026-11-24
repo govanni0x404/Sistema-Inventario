@@ -1,9 +1,9 @@
 import { api } from "./client";
 import type { MovimientoCaja } from "../types/turno";
 
-export type MovimientoCajaInput = { tipo: "retiro" | "ingreso"; monto: number; motivo: string };
+export type MovimientoCajaInput = { turnoCajaId: string; tipo: "retiro" | "ingreso"; monto: number; motivo: string };
 
 export const movimientosCajaApi = {
-  listarActual: () => api.get<MovimientoCaja[]>("/movimientos-caja"),
+  listarActual: (turnoCajaId: string) => api.get<MovimientoCaja[]>(`/movimientos-caja?turnoCajaId=${encodeURIComponent(turnoCajaId)}`),
   crear: (data: MovimientoCajaInput) => api.post<MovimientoCaja>("/movimientos-caja", data),
 };

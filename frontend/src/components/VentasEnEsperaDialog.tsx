@@ -21,9 +21,10 @@ export default function VentasEnEsperaDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onRecuperar: (venta: VentaEnEspera) => void;
+  onRecuperar: (venta: VentaEnEspera) => Promise<void>;
 }) {
   const [ventas, setVentas] = useState<VentaEnEspera[] | null>(null);
+  const [ocupado, setOcupado] = useState(false);
 
   const cargar = async () => {
     try {
@@ -41,17 +42,20 @@ export default function VentasEnEsperaDialog({
   }, [open]);
 
   const descartar = async (v: VentaEnEspera) => {
+    setOcupado(true);
     try {
       await ventasEnEsperaApi.eliminar(v.id);
       setVentas((prev) => prev?.filter((x) => x.id !== v.id) ?? null);
       toast.success("Venta en espera descartada");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "No se pudo descartar");
+    } finally {
+      setOcupado(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => !o && !ocupado && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -72,7 +76,7 @@ export default function VentasEnEsperaDialog({
         {ventas && ventas.length > 0 && (
           <div className="rounded-xl border border-border divide-y divide-border overflow-hidden max-h-96 overflow-y-auto">
             {ventas.map((v) => (
-              <div key={v.id} className="flex items-center justify-between gap-4 px-4 py-3">
+              <div key={v.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <div className="font-body text-sm font-medium text-foreground truncate">
                     {v.referencia || v.cliente?.nombre || "Sin referencia"}
@@ -84,10 +88,17 @@ export default function VentasEnEsperaDialog({
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => onRecuperar(v)}>
+                  <Button variant="outline" size="sm" disabled={ocupado} onClick={async () => {
+                    setOcupado(true);
+                    try {
+                      await onRecuperar(v);
+                    } finally {
+                      setOcupado(false);
+                    }
+                  }}>
                     <RotateCcw size={13} /> Recuperar
                   </Button>
-                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => descartar(v)} aria-label="Descartar">
+                  <Button variant="ghost" size="icon" disabled={ocupado} className="text-destructive hover:text-destructive" onClick={() => descartar(v)} aria-label="Descartar">
                     <Trash2 size={15} />
                   </Button>
                 </div>

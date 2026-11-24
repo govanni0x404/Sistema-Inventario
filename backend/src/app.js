@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const { existsSync } = require("node:fs");
+const path = require("node:path");
 
 const authRoutes = require("./routes/auth.routes");
 const productosRoutes = require("./routes/productos.routes");
@@ -25,17 +27,32 @@ const setupRoutes = require("./routes/setup.routes");
 const auth = require("./middleware/auth");
 const requireAdmin = require("./middleware/requireAdmin");
 const errorHandler = require("./middleware/errorHandler");
+const prisma = require("./lib/prisma");
 
 const app = express();
+const frontendDist = path.resolve(__dirname, "../../frontend/dist");
+const frontendIndex = path.join(frontendDist, "index.html");
 
-// Detrás de un reverse proxy (nginx, Render, etc.) esto hace que req.ip sea la IP real del
-// cliente y no la del proxy — necesario para que el rate limiting de /api/auth/login sea correcto.
-if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
+// Solo se confía en cabeceras reenviadas al configurar los proxies que preceden al servidor.
+const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
+if (!Number.isSafeInteger(proxyHops) || proxyHops < 0) {
+  throw new Error("TRUST_PROXY_HOPS debe ser un entero mayor o igual a cero.");
+}
+app.set("trust proxy", proxyHops);
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:5173" }));
 app.use(express.json({ limit: "5mb" })); // filas de importación masiva de productos pueden superar el límite por defecto
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+app.get("/api/ready", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true });
+  } catch {
+    res.status(503).json({ ok: false, error: "Base de datos no disponible" });
+  }
+});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/setup", setupRoutes);
@@ -48,6 +65,7 @@ app.use("/api/permisos", auth, requireAdmin, permisosRoutes);
 app.use("/api/usuarios", auth, requireAdmin, usuariosRoutes);
 app.use("/api/dashboard", auth, dashboardRoutes);
 app.use("/api/turnos", auth, turnosRoutes);
+app.use("/api/cajas", auth, require("./routes/cajas.routes"));
 app.use("/api/tipos-turno", auth, tiposTurnoRoutes);
 app.use("/api/categorias", auth, categoriasRoutes);
 app.use("/api/unidades", auth, unidadesRoutes);
@@ -60,7 +78,25 @@ app.use("/api/bodegas", auth, bodegasRoutes);
 app.use("/api/auditoria", auth, requireAdmin, auditoriaRoutes);
 app.use("/api/negocio", auth, negocioRoutes);
 
-app.use((req, res) => res.status(404).json({ error: "Ruta no encontrada" }));
+function notFound(req, res) {
+  res.status(404).json({ error: "Ruta no encontrada" });
+}
+
+app.use("/api", notFound);
+
+if (existsSync(frontendIndex)) {
+  app.use("/assets", express.static(path.join(frontendDist, "assets"), {
+    immutable: true,
+    maxAge: "1y",
+  }), notFound);
+  app.use(express.static(frontendDist, { index: false }));
+  app.get("*", (req, res, next) => {
+    if (path.extname(req.path) || !req.accepts("html")) return next();
+    res.sendFile(frontendIndex, { cacheControl: false, headers: { "Cache-Control": "no-cache" } });
+  });
+}
+
+app.use(notFound);
 app.use(errorHandler);
 
 module.exports = app;

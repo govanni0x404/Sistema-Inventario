@@ -1,32 +1,55 @@
-import { useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
-import { Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
-import { navGroups, adminNavItems, categoriasNavItem } from "./nav-data";
+import { Component, Suspense, useEffect, useState, type PropsWithChildren } from "react";
+import { Outlet, useLocation, useMatch } from "react-router-dom";
+import { Menu } from "lucide-react";
+import { navItems } from "./nav-data";
 import { useSidebar } from "@/context/SidebarContext";
+import { useNegocio } from "@/context/NegocioContext";
 import AppSidebarNav from "./AppSidebarNav";
 import ThemeToggle from "./ThemeToggle";
+import VersionFooter from "./VersionFooter";
 import CommandPalette from "./CommandPalette";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb";
 import { cn } from "@/lib/utils";
 
-const allItems = [...navGroups.flatMap((g) => g.items), categoriasNavItem, ...adminNavItems];
+class ErrorDeSeccion extends Component<PropsWithChildren, { fallida: boolean }> {
+  state = { fallida: false };
+
+  static getDerivedStateFromError() {
+    return { fallida: true };
+  }
+
+  render() {
+    if (!this.state.fallida) return this.props.children;
+    return (
+      <div className="space-y-3 py-6">
+        <p role="alert" className="text-sm text-destructive">No se pudo cargar esta sección.</p>
+        <Button variant="outline" onClick={() => window.location.reload()}>Recargar aplicación</Button>
+      </div>
+    );
+  }
+}
 
 export default function AppLayout() {
-  const location = useLocation();
+  const { pathname } = useLocation();
+  const isDashboard = useMatch("/dashboard") !== null;
+  const isCaja = useMatch("/caja") !== null;
+  const isProductos = useMatch("/productos") !== null;
+  const { negocio } = useNegocio();
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useSidebar();
-  const noCardWrapper = location.pathname === "/caja" || location.pathname === "/dashboard";
-  const activo = allItems.find((t) => t.to === location.pathname);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const pageTitle = navItems.find((item) => item.to === pathname)?.label ?? "Tu espacio de trabajo";
 
-  const pageTitle = useMemo(() => activo?.label ?? "", [activo]);
+  useEffect(() => {
+    document.title = `${pageTitle} | ${negocio.nombre}`;
+    return () => { document.title = "Caja e Inventario"; };
+  }, [pageTitle, negocio.nombre]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setPaletteOpen((o) => !o);
+        if (!e.repeat) setPaletteOpen((open) => !open);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -34,72 +57,56 @@ export default function AppLayout() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background font-body flex">
-      <aside
-        className={cn(
-          "hidden md:flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200",
-          collapsed ? "w-16" : "w-64"
-        )}
-      >
-        <AppSidebarNav collapsed={collapsed} />
+    <div className="min-h-dvh bg-background font-body md:flex">
+      <a href="#contenido-principal" className="sr-only z-50 rounded-md bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2">
+        Ir al contenido
+      </a>
+
+      <aside className={cn(
+        "sticky top-0 hidden h-dvh shrink-0 flex-col bg-sidebar text-sidebar-foreground transition-[width] duration-200 motion-reduce:transition-none md:flex",
+        collapsed ? "w-[4.5rem]" : "w-[15rem]",
+      )}>
+        <AppSidebarNav collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       </aside>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="p-0 w-72 bg-sidebar">
+        <SheetContent side="left" className="w-72 max-w-[calc(100%-2rem)] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground [&>button]:text-sidebar-foreground">
           <SheetTitle className="sr-only">Navegación</SheetTitle>
-          <SheetDescription className="sr-only">Menú principal</SheetDescription>
+          <SheetDescription className="sr-only">Elige una sección del sistema.</SheetDescription>
           <AppSidebarNav onNavigate={() => setMobileOpen(false)} />
         </SheetContent>
       </Sheet>
 
-      <div className="flex-1 min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-background/95 backdrop-blur px-4 sm:px-6 h-14 shrink-0">
-          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Abrir menú">
-            <Menu size={18} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden md:inline-flex"
-            onClick={toggleCollapsed}
-            aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
-          >
-            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-          </Button>
-
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage className="font-display text-sm font-semibold">{pageTitle}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-
-          <div className="ml-auto flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPaletteOpen(true)}
-              className="hidden sm:inline-flex gap-2 text-muted-foreground font-normal"
-            >
-              <Search size={14} />
-              Buscar
-              <kbd className="ml-1 rounded border border-border px-1.5 py-0.5 text-[10px]">Ctrl K</kbd>
-            </Button>
-            <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setPaletteOpen(true)} aria-label="Buscar">
-              <Search size={18} />
-            </Button>
+      <div className="group/workspace relative flex min-h-dvh min-w-0 flex-1 flex-col has-[.caja-vista-fija]:h-dvh has-[.caja-vista-fija]:overflow-hidden">
+        <header className="sticky top-0 z-30 flex h-11 shrink-0 items-center justify-end border-b border-border bg-card/95 px-3 backdrop-blur group-has-[.cash-opening]/workspace:pointer-events-none group-has-[.cash-opening]/workspace:absolute group-has-[.cash-opening]/workspace:inset-x-0 group-has-[.cash-opening]/workspace:border-0 group-has-[.cash-opening]/workspace:bg-transparent group-has-[.cash-opening]/workspace:backdrop-blur-none sm:px-4">
+          <div className="pointer-events-auto rounded-lg group-has-[.cash-opening]/workspace:bg-card/90 group-has-[.cash-opening]/workspace:shadow-sm">
             <ThemeToggle />
           </div>
         </header>
 
-        <main className="flex-1 min-w-0">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-            <div className={noCardWrapper ? "" : "rounded-xl border border-border bg-card p-4 sm:p-6 shadow-sm"}>
-              <Outlet />
-            </div>
+        <main id="contenido-principal" tabIndex={-1} className={cn(
+          "w-full flex-1 outline-none",
+          isCaja ? "flex min-h-0 flex-col"
+            : isProductos ? "flex min-w-0 flex-col px-2 py-3 sm:px-4 lg:py-4"
+            : "mx-auto max-w-[95rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
+        )}>
+          {!isDashboard && !isCaja && (
+            <h1 className="mb-5 font-display text-3xl leading-tight font-bold tracking-[-0.04em] text-foreground sm:text-4xl">{pageTitle}</h1>
+          )}
+          <div className={isCaja || isProductos ? "flex min-h-0 min-w-0 flex-1 flex-col" : isDashboard ? undefined : "min-w-0 rounded-xl border border-border bg-card p-4 sm:p-6"}>
+            <ErrorDeSeccion key={pathname}>
+              <Suspense fallback={<p role="status" className="py-6 text-sm text-muted-foreground">Cargando sección…</p>}>
+                <Outlet />
+              </Suspense>
+            </ErrorDeSeccion>
           </div>
         </main>
+        <div className="sticky bottom-0 z-20 flex shrink-0 items-center justify-between border-t bg-background px-3 group-has-[.cash-opening]/workspace:pointer-events-none group-has-[.cash-opening]/workspace:absolute group-has-[.cash-opening]/workspace:inset-x-0 group-has-[.cash-opening]/workspace:border-0 group-has-[.cash-opening]/workspace:bg-transparent group-has-[.cash-opening]/workspace:pb-2 md:static md:justify-end md:px-4">
+          <Button variant="ghost" size="sm" className="pointer-events-auto group-has-[.cash-opening]/workspace:bg-card/90 md:hidden" onClick={() => setMobileOpen(true)} aria-haspopup="dialog" aria-expanded={mobileOpen}>
+            <Menu size={16} /> Menú
+          </Button>
+          <VersionFooter className="py-2 text-muted-foreground group-has-[.cash-opening]/workspace:rounded-full group-has-[.cash-opening]/workspace:bg-black/60 group-has-[.cash-opening]/workspace:px-3 group-has-[.cash-opening]/workspace:py-1 group-has-[.cash-opening]/workspace:text-white" />
+        </div>
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />

@@ -1,168 +1,142 @@
-import { NavLink } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { navGroups, adminNavItems, categoriasNavItem } from "./nav-data";
+import { useState } from "react";
+import { matchPath, NavLink, useLocation } from "react-router-dom";
+import { Boxes, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { navGroups, navItems, tieneAcceso } from "./nav-data";
 import { useAuth } from "@/context/AuthContext";
 import { useNegocio } from "@/context/NegocioContext";
-import { productosApi } from "@/api/productos";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import UserMenu from "./UserMenu";
 
-export default function AppSidebarNav({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
+const directPaths: readonly string[] = ["/dashboard", "/caja"];
+const shortcutPaths: readonly string[] = [...directPaths, "/precios", "/productos"];
+const alphabeticalOrder = new Intl.Collator("es-CL");
+const compareLabels = (a: { label: string }, b: { label: string }) => alphabeticalOrder.compare(a.label, b.label);
+
+export default function AppSidebarNav({
+  collapsed = false,
+  onToggleCollapsed,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+  onNavigate?: () => void;
+}) {
   const { usuario } = useAuth();
   const { negocio } = useNegocio();
-  const iniciales =
-    negocio.nombre
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((p) => p[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase() || "MN";
-  const [lowStockCount, setLowStockCount] = useState(0);
+  const { pathname } = useLocation();
+  const [expanded, setExpanded] = useState<Record<string, { open: boolean; pathname: string }>>({});
+  const [popup, setPopup] = useState<string | null>(null);
+  const shortcuts = navItems
+    .filter((item) => shortcutPaths.includes(item.to) && tieneAcceso(usuario, item))
+    .sort((a, b) => shortcutPaths.indexOf(a.to) - shortcutPaths.indexOf(b.to));
+  const groups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .filter((item) => !directPaths.includes(item.to) && tieneAcceso(usuario, item))
+        .sort(compareLabels),
+    }))
+    .filter(({ items }) => items.length > 0);
+  const groupButton = "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-semibold hover:bg-sidebar-accent/70 focus-visible:outline-2 focus-visible:outline-sidebar-primary";
 
-  useEffect(() => {
-    productosApi
-      .listarConStockBajo()
-      .then((p) => setLowStockCount(p.length))
-      .catch(() => setLowStockCount(0));
-  }, []);
+  const navigate = () => {
+    setPopup(null);
+    onNavigate?.();
+  };
 
-  const groups = useMemo(
-    () =>
-      navGroups
-        .map((g) => ({
-          ...g,
-          items: g.items.filter((item) => usuario?.rol === "admin" || usuario?.permisos?.[item.seccion] !== false),
-        }))
-        .map((g) => (g.label === "Mantención" && usuario?.rol === "admin" ? { ...g, items: [...g.items, categoriasNavItem] } : g))
-        .filter((g) => g.items.length > 0),
-    [usuario]
+  const renderLink = (
+    { to, label, icon: Icon }: Pick<(typeof navItems)[number], "to" | "label" | "icon">,
+    shortcut = false,
+  ) => (
+    <li key={to}>
+      <NavLink
+        to={to}
+        end
+        onClick={navigate}
+        aria-label={shortcut && collapsed ? label : undefined}
+        title={shortcut && collapsed ? label : undefined}
+        className={({ isActive }) => cn(
+          "flex items-center gap-2.5 rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-sidebar-primary",
+          shortcut ? "min-h-10 px-3 text-sm font-semibold" : "min-h-9 px-2.5 text-[13px] font-medium",
+          shortcut && collapsed && "justify-center px-0",
+          isActive
+              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+            : "text-sidebar-foreground/85 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+        )}
+      >
+        <Icon size={shortcut ? 18 : 16} className="shrink-0" aria-hidden="true" />
+        {!(shortcut && collapsed) && <span>{label}</span>}
+      </NavLink>
+    </li>
   );
 
   return (
-    <div className="flex h-full flex-col">
-      <div className={cn("flex items-center gap-2.5 px-3 py-4", collapsed && "justify-center px-2")}>
-        <span className="flex items-center justify-center size-8 rounded-lg bg-primary text-primary-foreground font-display font-bold text-sm shrink-0">
-          {iniciales}
+    <div className="sidebar-photo flex h-full min-h-0 flex-col">
+      <div className={cn("flex min-h-24 shrink-0 items-center gap-3 border-b border-white/15 px-5", collapsed && "flex-col justify-center gap-1.5 px-2")}>
+        <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-sidebar-primary text-sidebar-primary-foreground" aria-hidden="true">
+          <Boxes size={20} />
         </span>
-        {!collapsed && (
-          <div className="min-w-0">
-            <div className="font-display text-sm font-bold text-sidebar-foreground leading-tight truncate">
-              {negocio.nombre}
-            </div>
-            <div className="font-body text-[11px] text-muted-foreground truncate">Caja e inventario</div>
-          </div>
+        <div className={cn("min-w-0 flex-1", collapsed && "sr-only")}>
+          <div className="truncate font-display text-sm font-bold leading-tight">{negocio.nombre}</div>
+          <div className="mt-0.5 truncate text-[11px] text-sidebar-muted">Caja e inventario</div>
+        </div>
+        {onToggleCollapsed && (
+          <button type="button" onClick={onToggleCollapsed} aria-label={collapsed ? "Expandir menú" : "Contraer menú"} aria-expanded={!collapsed}
+            className="grid size-8 shrink-0 place-items-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-sidebar-primary">
+            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-1 space-y-4">
-        {groups.map((group) => (
-          <div key={group.label}>
-            {!collapsed && (
-              <div className="px-2.5 mb-1 font-body text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {group.label}
-              </div>
-            )}
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const link = (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={onNavigate}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 font-body text-sm font-medium transition-colors",
-                        collapsed && "justify-center px-0",
-                        isActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-                      )
-                    }
-                  >
-                    <Icon size={17} className="shrink-0" />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </NavLink>
-                );
-
-                if (!collapsed) return link;
-                return (
-                  <Tooltip key={item.to}>
-                    <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    <TooltipContent side="right">{item.label}</TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-
-        {usuario?.rol === "admin" && (
-          <div>
-            {!collapsed && (
-              <div className="px-2.5 mb-1 font-body text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Administración
-              </div>
-            )}
-            <div className="space-y-0.5">
-              {adminNavItems.map((item) => {
-                const Icon = item.icon;
-                const link = (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={onNavigate}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 font-body text-sm font-medium transition-colors",
-                        collapsed && "justify-center px-0",
-                        isActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-                      )
-                    }
-                  >
-                    <Icon size={17} className="shrink-0" />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </NavLink>
-                );
-                if (!collapsed) return link;
-                return (
-                  <Tooltip key={item.to}>
-                    <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    <TooltipContent side="right">{item.label}</TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </div>
+      <nav aria-label="Menú principal" className="flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-color:#b994a180_transparent] [scrollbar-width:thin]">
+        {shortcuts.length > 0 && (
+          <ul aria-label="Accesos directos" className="mb-3 space-y-1 border-b border-white/15 pb-3">
+            {shortcuts.map((item) => renderLink(item, true))}
+          </ul>
         )}
+        {groups.map(({ label, icon: GroupIcon, items }) => {
+          const active = items.some(({ to }) => matchPath(to, pathname));
+          const preference = expanded[label];
+          const open = active && preference?.pathname !== pathname ? true : (preference?.open ?? active);
+          const buttonClass = cn(groupButton, active ? "bg-sidebar-accent/70 text-sidebar-primary" : "text-sidebar-foreground");
+          const links = (
+            <ul aria-label={label} className="space-y-0.5">
+              {items.map((item) => renderLink(item))}
+            </ul>
+          );
+
+          if (collapsed) {
+            return (
+              <Popover key={label} open={popup === label} onOpenChange={(open) => setPopup(open ? label : null)}>
+                <PopoverTrigger type="button" aria-label={label} title={label} className={cn(buttonClass, "justify-center px-0")}>
+                  <GroupIcon size={18} aria-hidden="true" />
+                </PopoverTrigger>
+                <PopoverContent side="right" align="start" sideOffset={14} aria-label={label} className="max-h-(--radix-popover-content-available-height) w-56 overflow-y-auto border-sidebar-border bg-sidebar p-2 text-sidebar-foreground">
+                  <p className="px-2.5 py-2 text-xs font-semibold text-sidebar-primary">{label}</p>
+                  {links}
+                </PopoverContent>
+              </Popover>
+            );
+          }
+
+          return (
+            <Collapsible key={label} open={open} onOpenChange={(open) => setExpanded((current) => ({ ...current, [label]: { open, pathname } }))}>
+              <CollapsibleTrigger type="button" className={cn("group", buttonClass)}>
+                <GroupIcon size={17} className="shrink-0" aria-hidden="true" />
+                <span className="flex-1">{label}</span>
+                <ChevronDown size={15} className="shrink-0 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-1 mb-2 ml-5 border-l border-white/15 pl-2">
+                {links}
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
       </nav>
 
-      <div className="px-2 py-2 border-t border-sidebar-border space-y-2">
-        {lowStockCount > 0 &&
-          (collapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center justify-center py-1.5 rounded-lg bg-destructive/10 text-destructive">
-                  <AlertTriangle size={15} />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right">{lowStockCount} producto(s) con stock bajo</TooltipContent>
-            </Tooltip>
-          ) : (
-            <div className="flex items-center gap-1.5 font-body text-xs px-2.5 py-2 rounded-lg bg-destructive/10 text-destructive">
-              <AlertTriangle size={13} className="shrink-0" /> {lowStockCount} producto{lowStockCount > 1 ? "s" : ""} con
-              stock bajo
-            </div>
-          ))}
+      <div className="shrink-0 border-t border-white/15 p-3">
         <UserMenu collapsed={collapsed} />
       </div>
     </div>

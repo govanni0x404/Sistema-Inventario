@@ -13,38 +13,36 @@ import { cn } from "@/lib/utils";
 import { LOCALE, money } from "../lib/format";
 
 
-export default function MovimientoCajaDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [movimientos, setMovimientos] = useState<MovimientoCaja[] | null>(null);
-  const [tipo, setTipo] = useState<"retiro" | "ingreso">("retiro");
+export default function MovimientoCajaDialog({ turnoCajaId, tipoInicial, onClose }: {
+  turnoCajaId: string;
+  tipoInicial: "retiro" | "ingreso";
+  onClose: () => void;
+}) {
+  const [movimientos, setMovimientos] = useState<MovimientoCaja[] | "error" | null>(null);
+  const [recarga, setRecarga] = useState(0);
+  const [tipo, setTipo] = useState(tipoInicial);
   const [monto, setMonto] = useState("");
   const [motivo, setMotivo] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const cargar = async () => {
-    try {
-      setMovimientos(await movimientosCajaApi.listarActual());
-    } catch {
-      toast.error("No se pudieron cargar los movimientos de caja");
-    }
-  };
-
   useEffect(() => {
-    if (open) {
-      setMovimientos(null);
-      cargar();
-    }
-  }, [open]);
+    let vigente = true;
+    movimientosCajaApi.listarActual(turnoCajaId)
+      .then((items) => { if (vigente) setMovimientos(items); })
+      .catch(() => { if (vigente) setMovimientos("error"); });
+    return () => { vigente = false; };
+  }, [turnoCajaId, recarga]);
 
   const registrar = async (e: FormEvent) => {
     e.preventDefault();
     if (!motivo.trim() || !Number(monto)) return;
     setGuardando(true);
     try {
-      await movimientosCajaApi.crear({ tipo, monto: Number(monto), motivo: motivo.trim() });
+      await movimientosCajaApi.crear({ turnoCajaId, tipo, monto: Number(monto), motivo: motivo.trim() });
       setMonto("");
       setMotivo("");
       toast.success(tipo === "retiro" ? "Retiro registrado" : "Ingreso registrado");
-      await cargar();
+      setRecarga((n) => n + 1);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "No se pudo registrar el movimiento");
     } finally {
@@ -53,7 +51,7 @@ export default function MovimientoCajaDialog({ open, onClose }: { open: boolean;
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && !guardando && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -110,10 +108,13 @@ export default function MovimientoCajaDialog({ open, onClose }: { open: boolean;
         <div>
           <div className="mb-2 font-body text-xs font-medium text-muted-foreground">Movimientos del turno actual</div>
           {movimientos === null && <div className="font-body text-xs text-muted-foreground text-center py-4">Cargando…</div>}
-          {movimientos && movimientos.length === 0 && (
+          {movimientos === "error" && (
+            <p role="alert" className="py-3 text-xs text-destructive">No se pudieron cargar los movimientos. <button type="button" className="underline" onClick={() => setRecarga((n) => n + 1)}>Reintentar</button></p>
+          )}
+          {Array.isArray(movimientos) && movimientos.length === 0 && (
             <div className="font-body text-xs text-muted-foreground text-center py-4">Aún no hay movimientos.</div>
           )}
-          {movimientos && movimientos.length > 0 && (
+          {Array.isArray(movimientos) && movimientos.length > 0 && (
             <div className="rounded-xl border border-border divide-y divide-border overflow-hidden max-h-48 overflow-y-auto">
               {movimientos.map((m) => (
                 <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2 font-body text-xs">

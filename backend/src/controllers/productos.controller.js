@@ -1,12 +1,33 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
-const { inicializarStockProducto } = require("../lib/stockBodega");
+const { imagenArchivo, imagenUrl } = require("../lib/productoImagen");
+const { bloquearCatalogoBodegas, inicializarStockProducto, stockCajaInclude, conStockCaja } = require("../lib/stockBodega");
+
+const PRODUCTO_RELACIONES = {
+  proveedor: { select: { id: true, nombre: true } },
+  categoria: { select: { id: true, nombre: true } },
+  unidad: { select: { id: true, nombre: true } },
+  foto: { select: { actualizadoEn: true } },
+};
+const PRODUCTO_INCLUDE = { ...PRODUCTO_RELACIONES, stockBodegas: stockCajaInclude };
+const fichaSchema = {
+  subfamilia: z.string().trim().max(120).optional().nullable(),
+  tipoImpuesto: z.enum(["iva19", "exento"]).optional(),
+  ventaPublico: z.boolean().optional(),
+  inventariable: z.boolean().optional(),
+  mostrarPrecio: z.boolean().optional(),
+  ventaVolumen: z.boolean().optional(),
+  esPack: z.boolean().optional(),
+  imagenUrl: imagenUrl.optional().nullable(),
+  imagenArchivo: imagenArchivo.optional().nullable(),
+};
 
 const productoSchema = z.object({
+  ...fichaSchema,
   sku: z.string().trim().min(1, "El SKU es obligatorio"),
   codigoBarras: z.preprocess(
-    (v) => (v === "" || v == null ? null : v),
+    (v) => (v === "" ? null : v),
     z.string().trim().min(1).nullable().optional()
   ),
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
@@ -24,9 +45,10 @@ const productoSchema = z.object({
 // productoSchema aplicarían ese default en cada PUT que los omita, pisando el valor guardado.
 // El stock tampoco se actualiza aquí: solo a través de /movimientos, para mantener el registro de auditoría.
 const productoUpdateSchema = z.object({
+  ...fichaSchema,
   sku: z.string().trim().min(1, "El SKU es obligatorio").optional(),
   codigoBarras: z.preprocess(
-    (v) => (v === "" || v == null ? null : v),
+    (v) => (v === "" ? null : v),
     z.string().trim().min(1).nullable().optional()
   ),
   nombre: z.string().trim().min(1, "El nombre es obligatorio").optional(),
@@ -39,12 +61,39 @@ const productoUpdateSchema = z.object({
   activo: z.boolean().optional(),
 });
 
-function serialize(producto) {
+function serialize({ foto, imagenExterna, ...producto }) {
   return {
-    ...producto,
+    ...(producto.stockBodegas ? conStockCaja(producto) : producto),
     precioCompra: Number(producto.precioCompra),
     precioVenta: Number(producto.precioVenta),
+    imagenUrl: foto ? `/api/productos/${producto.id}/imagen?v=${foto.actualizadoEn.getTime()}` : imagenExterna ?? null,
   };
+}
+
+async function guardarFoto(tx, productoId, archivo, enlace) {
+  if (archivo) {
+    await tx.productoImagen.upsert({ where: { productoId }, create: { productoId, ...archivo }, update: archivo });
+  } else if (archivo !== undefined || enlace !== undefined) {
+    await tx.productoImagen.deleteMany({ where: { productoId } });
+  }
+}
+
+async function obtenerImagen(req, res) {
+  const foto = await prisma.productoImagen.findUnique({ where: { productoId: req.params.id } });
+  if (!foto) throw new HttpError(404, "La imagen del producto no existe");
+  res.set({ "Cache-Control": "private, no-cache", "X-Content-Type-Options": "nosniff" });
+  res.type(foto.mime).send(foto.datos);
+}
+
+async function generarCodigo(req, res) {
+  for (;;) {
+    const [{ numero }] = await prisma.$queryRaw`SELECT nextval('producto_ean13_seq') AS numero`;
+    const base = `20${String(numero).padStart(10, "0")}`;
+    const suma = [...base].reduce((total, digito, i) => total + Number(digito) * (i % 2 === 0 ? 1 : 3), 0);
+    const codigoBarras = `${base}${(10 - suma % 10) % 10}`;
+    const existe = await prisma.producto.findFirst({ where: { OR: [{ codigoBarras }, { sku: codigoBarras }] }, select: { id: true } });
+    if (!existe) return res.json({ codigoBarras });
+  }
 }
 
 // GET /api/productos?q=&stockBajo=&activo=
@@ -59,17 +108,14 @@ async function listar(req, res) {
       { nombre: { contains: String(q), mode: "insensitive" } },
       { sku: { contains: String(q), mode: "insensitive" } },
       { categoria: { nombre: { contains: String(q), mode: "insensitive" } } },
+      { subfamilia: { contains: String(q), mode: "insensitive" } },
       { codigoBarras: { contains: String(q), mode: "insensitive" } },
     ];
   }
 
   let productos = await prisma.producto.findMany({
     where,
-    include: {
-      proveedor: { select: { id: true, nombre: true } },
-      categoria: { select: { id: true, nombre: true } },
-      unidad: { select: { id: true, nombre: true } },
-    },
+    include: PRODUCTO_INCLUDE,
     orderBy: { nombre: "asc" },
   });
 
@@ -84,11 +130,7 @@ async function listar(req, res) {
 async function obtener(req, res) {
   const producto = await prisma.producto.findUnique({
     where: { id: req.params.id },
-    include: {
-      proveedor: { select: { id: true, nombre: true } },
-      categoria: { select: { id: true, nombre: true } },
-      unidad: { select: { id: true, nombre: true } },
-    },
+    include: PRODUCTO_INCLUDE,
   });
   if (!producto) return res.status(404).json({ error: "Producto no encontrado" });
   res.json(serialize(producto));
@@ -111,18 +153,16 @@ async function crear(req, res) {
   }
 
   const producto = await prisma.$transaction(async (tx) => {
+    await bloquearCatalogoBodegas(tx);
+    const { imagenArchivo: archivo, imagenUrl: enlace, ...datos } = parsed.data;
     const creado = await tx.producto.create({
-      data: parsed.data,
-      include: {
-        proveedor: { select: { id: true, nombre: true } },
-        categoria: { select: { id: true, nombre: true } },
-        unidad: { select: { id: true, nombre: true } },
-      },
+      data: { ...datos, imagenExterna: archivo ? null : enlace },
     });
     await inicializarStockProducto(tx, creado.id, creado.stock);
-    return creado;
+    await guardarFoto(tx, creado.id, archivo, enlace);
+    return tx.producto.findUniqueOrThrow({ where: { id: creado.id }, include: PRODUCTO_INCLUDE });
   });
-  res.status(201).json(serialize(producto));
+  res.status(201).json({ ...serialize(producto), stockCaja: producto.stock });
 }
 
 // PUT /api/productos/:id
@@ -149,15 +189,12 @@ async function actualizar(req, res) {
     (parsed.data.precioVenta !== undefined && parsed.data.precioVenta !== Number(producto.precioVenta));
 
   const actualizado = await prisma.$transaction(async (tx) => {
+    const { imagenArchivo: archivo, imagenUrl: enlace, ...datos } = parsed.data;
     const upd = await tx.producto.update({
       where: { id: req.params.id },
-      data: parsed.data,
-      include: {
-        proveedor: { select: { id: true, nombre: true } },
-        categoria: { select: { id: true, nombre: true } },
-        unidad: { select: { id: true, nombre: true } },
-      },
+      data: { ...datos, ...(archivo !== undefined || enlace !== undefined ? { imagenExterna: archivo ? null : enlace ?? null } : {}) },
     });
+    await guardarFoto(tx, upd.id, archivo, enlace);
 
     if (cambiaPrecio) {
       await tx.historialPrecio.create({
@@ -172,7 +209,7 @@ async function actualizar(req, res) {
       });
     }
 
-    return upd;
+    return tx.producto.findUniqueOrThrow({ where: { id: upd.id }, include: PRODUCTO_INCLUDE });
   });
 
   res.json(serialize(actualizado));
@@ -214,6 +251,7 @@ async function eliminar(req, res) {
     const desactivado = await prisma.producto.update({
       where: { id: req.params.id },
       data: { activo: false },
+      include: { stockBodegas: stockCajaInclude },
     });
     return res.json({ ...serialize(desactivado), _desactivado: true });
   }
@@ -351,6 +389,7 @@ async function importar(req, res) {
         const unidadFinal = unidadId ?? unidadDefecto?.id;
         if (!unidadFinal) throw new Error("No hay unidades configuradas en el sistema");
         const creado = await prisma.$transaction(async (tx) => {
+          await bloquearCatalogoBodegas(tx);
           const p = await tx.producto.create({
             data: {
               precioCompra: 0,
@@ -377,4 +416,4 @@ async function importar(req, res) {
   res.json({ resumen: { total: parsed.data.productos.length, creados, actualizados, errores }, resultados });
 }
 
-module.exports = { listar, obtener, crear, actualizar, eliminar, historialPrecios, importar };
+module.exports = { listar, obtener, obtenerImagen, generarCodigo, crear, actualizar, eliminar, historialPrecios, importar };

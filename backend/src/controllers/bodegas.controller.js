@@ -1,7 +1,7 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
-const { ajustarStockBodega } = require("../lib/stockBodega");
+const { ajustarStockBodega, bloquearCatalogoBodegas } = require("../lib/stockBodega");
 
 const bodegaSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
@@ -58,6 +58,7 @@ async function crear(req, res) {
   if (existente) throw new HttpError(409, "Ya existe una bodega con ese nombre");
 
   const bodega = await prisma.$transaction(async (tx) => {
+    await bloquearCatalogoBodegas(tx);
     const creada = await tx.bodega.create({ data: { ...parsed.data, principal: false } });
     const productos = await tx.producto.findMany({ select: { id: true } });
     if (productos.length > 0) {
@@ -100,17 +101,19 @@ async function actualizar(req, res) {
 
 // DELETE /api/bodegas/:id — bloqueada si es la principal o si todavía tiene stock asignado.
 async function eliminar(req, res) {
-  const existente = await prisma.bodega.findUnique({ where: { id: req.params.id } });
-  if (!existente) throw new HttpError(404, "Bodega no encontrada");
-  if (existente.principal) throw new HttpError(400, "La bodega principal no se puede eliminar");
+  await prisma.$transaction(async (tx) => {
+    await bloquearCatalogoBodegas(tx);
+    const [bodega] = await tx.$queryRaw`
+      SELECT "principal" FROM "bodegas" WHERE "id" = ${req.params.id} FOR UPDATE
+    `;
+    if (!bodega) throw new HttpError(404, "Bodega no encontrada");
+    if (bodega.principal) throw new HttpError(400, "La bodega principal no se puede eliminar");
 
-  const conStock = await prisma.stockBodega.findFirst({ where: { bodegaId: req.params.id, cantidad: { gt: 0 } } });
-  if (conStock) throw new HttpError(409, "No se puede eliminar: la bodega todavía tiene stock asignado");
+    const conStock = await tx.stockBodega.findFirst({ where: { bodegaId: req.params.id, cantidad: { gt: 0 } } });
+    if (conStock) throw new HttpError(409, "No se puede eliminar: la bodega todavía tiene stock asignado");
 
-  await prisma.$transaction([
-    prisma.stockBodega.deleteMany({ where: { bodegaId: req.params.id } }),
-    prisma.bodega.delete({ where: { id: req.params.id } }),
-  ]);
+    await tx.bodega.delete({ where: { id: req.params.id } });
+  });
   res.status(204).send();
 }
 
@@ -124,13 +127,17 @@ async function transferir(req, res) {
   const { origenBodegaId, destinoBodegaId, productoId, cantidad, motivo } = parsed.data;
 
   const movimientos = await prisma.$transaction(async (tx) => {
-    const [origen, destino, producto] = await Promise.all([
+    const [origen, destino] = await Promise.all([
       tx.bodega.findUnique({ where: { id: origenBodegaId } }),
       tx.bodega.findUnique({ where: { id: destinoBodegaId } }),
-      tx.producto.findUnique({ where: { id: productoId } }),
     ]);
     if (!origen) throw new HttpError(404, "Bodega de origen no encontrada");
     if (!destino) throw new HttpError(404, "Bodega de destino no encontrada");
+
+    // Las ventas y ajustes manuales actualizan el producto antes de tocar las bodegas.
+    const [producto] = await tx.$queryRaw`
+      SELECT "id" FROM "productos" WHERE "id" = ${productoId} FOR NO KEY UPDATE
+    `;
     if (!producto) throw new HttpError(404, "Producto no encontrado");
 
     const stockOrigenResultante = await ajustarStockBodega(tx, origenBodegaId, productoId, -cantidad);

@@ -67,6 +67,41 @@ describe("Devoluciones: monto reembolsado y arqueo", () => {
     expect(Math.round(reembolsado * 100) / 100).toBe(50);
   });
 
+  test("las devoluciones parciales también compensan redondeos hacia abajo", async () => {
+    const venta = await vender({
+      pagos: [{ metodoPago: "efectivo", monto: 49.99 }],
+      descuento: 10.01,
+      items: [{ productoId: producto.id, cantidad: 3 }],
+    });
+    const montos = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app).post(`/api/ventas/${venta.id}/devolucion`).set(auth())
+        .send({ items: [{ ventaItemId: venta.items[0].id, cantidad: 1 }] });
+      expect(res.status).toBe(201);
+      montos.push(res.body.total);
+    }
+    expect(montos).toEqual([16.66, 16.67, 16.66]);
+  });
+
+  test("dos devoluciones simultáneas del mismo ítem solo restauran stock una vez", async () => {
+    const venta = await vender({
+      pagos: [{ metodoPago: "efectivo", monto: 20 }],
+      items: [{ productoId: producto.id, cantidad: 1 }],
+    });
+    const item = { ventaItemId: venta.items[0].id, cantidad: 1 };
+    const url = `/api/ventas/${venta.id}/devolucion`;
+    const duplicado = await request(app).post(url).set(auth()).send({ items: [item, item] });
+    expect(duplicado.status).toBe(400);
+
+    const intentos = await Promise.all([
+      request(app).post(url).set(auth()).send({ items: [item] }),
+      request(app).post(url).set(auth()).send({ items: [item] }),
+    ]);
+    expect(intentos.map((res) => res.status).sort()).toEqual([201, 409]);
+    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
+    expect(actualizado.stock).toBe(20);
+  });
+
   test("una cortesía devuelve el stock pero reembolsa $0 y sin método", async () => {
     const venta = await vender({ esCortesia: true, motivoCortesia: "Prueba", items: [{ productoId: producto.id, cantidad: 1 }] });
 

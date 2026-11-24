@@ -13,6 +13,7 @@ export interface VentaItem {
   precioUnitario: number;
   descuento: number;
   subtotal: number;
+  importeCobrado?: number;
   producto?: { id: string; nombre: string; sku: string };
 }
 
@@ -48,11 +49,13 @@ export interface Venta {
   pagos: VentaPago[];
   items: VentaItem[];
   turnoCajaId?: string | null;
-  turnoCaja?: { id: string; tipoTurno: { nombre: string } } | null;
+  turnoCaja?: { id: string; caja: { nombre: string }; tipoTurno: { nombre: string } } | null;
   devoluciones?: Devolucion[];
 }
 
 export type VentaInput = {
+  turnoCajaId?: string;
+  claveIdempotencia?: string;
   clienteId?: string | null;
   listaPrecioId?: string | null;
   pagos?: { metodoPago: MetodoPago; monto: number }[];
@@ -63,6 +66,7 @@ export type VentaInput = {
 };
 
 export type DevolucionInput = {
+  turnoCajaId?: string;
   motivo?: string | null;
   metodoReembolso?: MetodoPago | null;
   items: { ventaItemId: string; cantidad: number }[];

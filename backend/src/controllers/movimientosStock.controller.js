@@ -41,15 +41,14 @@ async function crear(req, res) {
     const delta = tipo === "salida" ? -cantidad : cantidad;
 
     if (tipo === "salida") {
-      if (producto.stock < cantidad) {
-        throw new HttpError(409, `Stock insuficiente (disponible: ${producto.stock})`);
-      }
       const resultado = await tx.producto.updateMany({
         where: { id: productoId, stock: { gte: cantidad } },
         data: { stock: { decrement: cantidad } },
       });
       if (resultado.count === 0) {
-        throw new HttpError(409, `Stock insuficiente (disponible: ${producto.stock})`);
+        const actual = await tx.producto.findUnique({ where: { id: productoId }, select: { stock: true } });
+        if (!actual) throw new HttpError(404, "Producto no encontrado");
+        throw new HttpError(409, `Stock insuficiente (disponible: ${actual.stock})`);
       }
     } else {
       await tx.producto.update({ where: { id: productoId }, data: { stock: { increment: cantidad } } });

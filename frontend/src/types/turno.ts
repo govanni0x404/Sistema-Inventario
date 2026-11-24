@@ -1,5 +1,15 @@
 export type EstadoTurno = "abierto" | "cerrado";
 
+export interface Caja {
+  id: string;
+  nombre: string;
+  principal: boolean;
+  activa: boolean;
+  turnoAbierto: { id: string; nombre: string; montoInicial: number } | null;
+}
+
+export type CajaInput = Pick<Caja, "nombre" | "activa">;
+
 export interface TipoTurno {
   id: string;
   nombre: string;
@@ -32,6 +42,8 @@ export interface ResumenMovimientosCaja {
 
 export interface TurnoCaja {
   id: string;
+  cajaId: string;
+  caja: { id: string; nombre: string };
   tipoTurnoId: string;
   tipoTurno: { id: string; nombre: string };
   estado: EstadoTurno;
@@ -51,5 +63,5 @@ export interface TurnoCaja {
 }
 
 export type TipoTurnoInput = { nombre: string; activo?: boolean };
-export type AbrirTurnoInput = { tipoTurnoId: string; montoInicial: number };
+export type AbrirTurnoInput = { tipoTurnoId: string; cajaId: string; montoInicial: number };
 export type CerrarTurnoInput = { montoContado: number; notas?: string };

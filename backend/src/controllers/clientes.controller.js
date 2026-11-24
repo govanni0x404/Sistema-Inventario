@@ -37,11 +37,11 @@ async function obtener(req, res) {
 
   res.json({
     ...cliente,
-    ventas: cliente.ventas.map((v) => ({
+    ventas: cliente.ventas.map(({ claveIdempotencia, huellaSolicitud, ...v }) => ({
       ...v,
       total: Number(v.total),
       pagos: v.pagos.map((p) => ({ ...p, monto: Number(p.monto) })),
-      items: v.items.map((it) => ({
+      items: v.items.map(({ costoUnitario, ...it }) => ({
         ...it,
         precioUnitario: Number(it.precioUnitario),
         subtotal: Number(it.subtotal),

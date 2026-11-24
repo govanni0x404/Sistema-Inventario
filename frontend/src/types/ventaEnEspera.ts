@@ -3,7 +3,7 @@ export interface VentaEnEsperaItem {
   productoId: string;
   cantidad: number;
   descuento: number;
-  producto: { id: string; nombre: string; sku: string; precioVenta: number; stock: number };
+  producto: { id: string; nombre: string; sku: string; precioVenta: number; stock: number; stockCaja: number; activo: boolean; ventaPublico: boolean; inventariable: boolean };
 }
 
 export interface VentaEnEspera {

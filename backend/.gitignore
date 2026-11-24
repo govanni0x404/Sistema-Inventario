@@ -1,4 +1,5 @@
 node_modules
+.postgres-local/
 .env
 .env.test
 dist

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Search, Plus, Pencil, Trash2, AlertTriangle, Upload } from "lucide-react";
+import { Barcode, Search, Plus, Pencil, Upload } from "lucide-react";
 import { productosApi } from "../api/productos";
 import { ApiError } from "../api/client";
 import type { Producto, ProductoInput } from "../types/producto";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import ProductoForm from "../components/ProductoForm";
 import ImportarProductosDialog from "../components/ImportarProductosDialog";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
-import { money } from "../lib/format";
+import { matchesSearch, normalizeSearch } from "../lib/search";
 
 
 type ModalState = { mode: "new" } | { mode: "edit"; data: Producto } | null;
@@ -46,8 +46,8 @@ export default function ProductosPage() {
 
   const filtered = useMemo(() => {
     if (!productos) return [];
-    const term = q.toLowerCase();
-    return productos.filter((p) => (p.nombre + p.sku + (p.categoria?.nombre || "")).toLowerCase().includes(term));
+    const term = normalizeSearch(q);
+    return productos.filter((p) => matchesSearch(term, [p.nombre, p.sku, p.codigoBarras, p.categoria?.nombre, p.subfamilia]));
   }, [productos, q]);
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
@@ -90,6 +90,7 @@ export default function ProductosPage() {
         setProductos((prev) => prev?.filter((p) => p.id !== deleteTarget.id) ?? null);
         toast.success("Producto eliminado");
       }
+      setModal(null);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "No se pudo eliminar el producto");
     } finally {
@@ -98,131 +99,103 @@ export default function ProductosPage() {
   };
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+    <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
+        <div className="relative min-w-0 basis-full sm:flex-1 sm:basis-auto">
+          <Search size={17} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
-            className="pl-9"
-            placeholder="Buscar por nombre, SKU o categoría"
+            className="h-10 pl-9"
+            aria-label="Buscar producto por nombre, SKU, código de barras o familia"
+            placeholder="Buscar por nombre, código de barras, SKU o familia…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <Button variant="outline" onClick={() => setImportando(true)}>
+        <Button variant="outline" className="h-10" onClick={() => setImportando(true)}>
           <Upload size={16} /> Importar
         </Button>
         <Button
+          className="h-10"
           onClick={() => {
             setFieldErrors(undefined);
             setModal({ mode: "new" });
           }}
         >
-          <Plus size={16} /> Nuevo
+          <Plus size={16} /> Nuevo producto
         </Button>
       </div>
 
-      {loadError && (
-        <div className="font-body text-sm text-center py-10 text-destructive">
-          {loadError} — <button className="underline" onClick={cargar}>reintentar</button>
-        </div>
-      )}
-
-      {!loadError && productos === null && (
-        <div className="space-y-2">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      )}
-
-      {!loadError && productos !== null && filtered.length === 0 && (
-        <div className="font-body text-sm text-center py-10 text-muted-foreground">No hay productos que coincidan.</div>
-      )}
-
-      {!loadError && filtered.length > 0 && (
-        <div className="rounded-xl border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Producto</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead>Stock</TableHead>
-                <TableHead className="text-right">Precio</TableHead>
-                <TableHead className="w-20" />
+      <section aria-label="Listado de productos" className="flex min-h-80 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card">
+        <Table aria-label="Productos del catálogo" className="min-w-[33rem]">
+          <TableHeader className="bg-muted/70">
+            <TableRow>
+              <TableHead scope="col" className="w-[22%] pl-4 sm:pl-5">Código de barras</TableHead>
+              <TableHead scope="col" className="w-[46%]">Nombre</TableHead>
+              <TableHead scope="col">Familia</TableHead>
+              <TableHead scope="col" className="w-16 text-center">Editar</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {!loadError && pageItems.map((p) => (
+              <TableRow key={p.id}>
+                <TableCell className="pl-4 font-mono tabular-nums sm:pl-5">
+                  {p.codigoBarras ? (
+                    <span className="inline-flex items-center gap-2"><Barcode size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />{p.codigoBarras}</span>
+                  ) : <span className="font-body text-muted-foreground">Sin código</span>}
+                </TableCell>
+                <TableCell className="font-medium whitespace-normal [overflow-wrap:anywhere]">
+                  <span>{p.nombre}</span>
+                  {!p.activo && <Badge variant="outline" className="ml-2">Inactivo</Badge>}
+                </TableCell>
+                <TableCell className="whitespace-normal text-muted-foreground [overflow-wrap:anywhere]">{p.categoria?.nombre ?? "Sin familia"}</TableCell>
+                <TableCell className="text-center">
+                  <Button type="button" variant="outline" size="icon" className="size-8 text-primary"
+                    aria-label={`Editar ${p.nombre}`} title={`Editar ${p.nombre}`} onClick={() => {
+                      setFieldErrors(undefined);
+                      setModal({ mode: "edit", data: p });
+                    }}>
+                    <Pencil size={15} aria-hidden="true" />
+                  </Button>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pageItems.map((p) => {
-                const low = p.stock <= p.stockMinimo;
-                return (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
-                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.sku}</span>
-                        {!p.activo && <Badge variant="outline">Inactivo</Badge>}
-                        {low && (
-                          <Badge variant="warning">
-                            <AlertTriangle size={11} /> Stock bajo
-                          </Badge>
-                        )}
-                      </div>
-                      {p.proveedor && (
-                        <div className="font-body text-xs text-muted-foreground mt-0.5">{p.proveedor.nombre}</div>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-body text-sm text-muted-foreground">{p.categoria?.nombre || "—"}</TableCell>
-                    <TableCell className="font-mono text-sm text-foreground">
-                      {p.stock} <span className="text-muted-foreground">{p.unidad.nombre}</span>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm font-semibold text-primary">
-                      {money(p.precioVenta)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setFieldErrors(undefined);
-                            setModal({ mode: "edit", data: p });
-                          }}
-                          aria-label="Editar"
-                        >
-                          <Pencil size={15} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(p)}
-                          aria-label="Eliminar"
-                        >
-                          <Trash2 size={15} />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
+            ))}
+          </TableBody>
+        </Table>
+        {loadError && (
+          <p role="alert" className="px-4 py-8 text-center text-sm text-destructive">
+            {loadError} <button type="button" className="ml-1 underline" onClick={cargar}>Reintentar</button>
+          </p>
+        )}
+        {!loadError && productos === null && (
+          <div role="status" aria-label="Cargando productos" className="space-y-2 p-4">
+            {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
+        )}
+        {!loadError && productos !== null && filtered.length === 0 && (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            {productos.length === 0 ? "Aún no hay productos registrados." : "No hay productos que coincidan con la búsqueda."}
+          </p>
+        )}
+        {!loadError && totalItems > pageSize && (
+          <div className="mt-auto border-t px-4 pb-4">
+            <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
+          </div>
+        )}
+      </section>
 
       <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-4xl lg:max-w-5xl">
           <DialogHeader>
             <DialogTitle>{modal?.mode === "new" ? "Nuevo producto" : "Editar producto"}</DialogTitle>
+            <DialogDescription className="sr-only">Datos, clasificación y precios del producto.</DialogDescription>
           </DialogHeader>
           {modal && (
             <ProductoForm
               initial={modal.mode === "edit" ? modal.data : undefined}
+              catalogo={productos ?? []}
               fieldErrors={fieldErrors}
               onCancel={() => setModal(null)}
+              onDelete={modal.mode === "edit" ? () => setDeleteTarget(modal.data) : undefined}
               onSave={save}
               saving={saving}
             />

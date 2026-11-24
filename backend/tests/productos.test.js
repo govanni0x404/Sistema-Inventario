@@ -2,6 +2,50 @@ const request = require("supertest");
 const app = require("../src/app");
 const { prisma, resetDb, crearUsuario, crearProducto, crearBodegaPrincipal } = require("./helpers");
 
+describe("Ficha de producto", () => {
+  beforeEach(async () => {
+    await resetDb();
+    await crearBodegaPrincipal();
+  });
+  afterAll(() => prisma.$disconnect());
+
+  test("genera EAN-13 distintos y conserva los parámetros y la imagen al editar", async () => {
+    const { token } = await crearUsuario({ rol: "admin" });
+    const auth = { Authorization: `Bearer ${token}` };
+    const unidad = await prisma.unidad.create({ data: { nombre: "Unidad" } });
+    const categoria = await prisma.categoria.create({ data: { nombre: "Bebidas" } });
+    const generar = () => request(app).post("/api/productos/codigo-barras").set(auth).expect(200);
+    const { body: primero } = await generar();
+    const { body: segundo } = await generar();
+    expect(primero.codigoBarras).toMatch(/^20\d{11}$/);
+    expect(segundo.codigoBarras).not.toBe(primero.codigoBarras);
+    expect([...primero.codigoBarras].reduce((total, digito, i) => total + Number(digito) * (i % 2 ? 3 : 1), 0) % 10).toBe(0);
+
+    const datos = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII=";
+    const ficha = {
+      sku: "FICHA-1", codigoBarras: primero.codigoBarras, nombre: "Producto de prueba", unidadId: unidad.id,
+      categoriaId: categoria.id, subfamilia: "Agua", tipoImpuesto: "exento", precioVenta: 100,
+      inventariable: false, ventaPublico: false, mostrarPrecio: false, ventaVolumen: true, esPack: true,
+    };
+    await request(app).post("/api/productos").set(auth).send({ ...ficha, imagenArchivo: "data:image/png;base64,SG9sYQ==" }).expect(400);
+    const { body: producto } = await request(app).post("/api/productos").set(auth)
+      .send({ ...ficha, imagenArchivo: `data:image/png;base64,${datos}` }).expect(201);
+    expect(producto).toMatchObject(ficha);
+    expect(producto).not.toHaveProperty("foto");
+    await request(app).get(producto.imagenUrl).expect(401);
+    const respuesta = await request(app).get(producto.imagenUrl).set(auth).expect("Content-Type", /image\/png/).expect(200);
+    expect(respuesta.body).toEqual(Buffer.from(datos, "base64"));
+
+    const { body: editado } = await request(app).put(`/api/productos/${producto.id}`).set(auth)
+      .send({ precioVenta: 120 }).expect(200);
+    expect(editado).toMatchObject({ ...ficha, precioVenta: 120, imagenUrl: producto.imagenUrl });
+    const { body: enLinea } = await request(app).put(`/api/productos/${producto.id}`).set(auth)
+      .send({ imagenUrl: "https://example.com/foto.png" }).expect(200);
+    expect(enLinea.imagenUrl).toBe("https://example.com/foto.png");
+    await request(app).get(producto.imagenUrl).set(auth).expect(404);
+  });
+});
+
 describe("Productos: eliminar", () => {
   let admin, producto;
 

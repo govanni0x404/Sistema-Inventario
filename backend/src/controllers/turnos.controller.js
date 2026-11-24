@@ -3,10 +3,13 @@ const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { bloquearTurnoExclusivo } = require("../lib/turnoLock");
 const { fechaDeQuery } = require("../lib/rangoFechas");
+const { aCentavos, montoEnCentavos } = require("../lib/dinero");
+const { buscarTurnoAbierto } = require("../lib/turnoAbierto");
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
 const INCLUDE = {
+  caja: { select: { id: true, nombre: true } },
   tipoTurno: { select: { id: true, nombre: true } },
   usuarioApertura: { select: { id: true, nombre: true } },
   usuarioCierre: { select: { id: true, nombre: true } },
@@ -98,7 +101,9 @@ async function listar(req, res) {
 
 // GET /api/turnos/actual — el turno abierto ahora mismo, o null.
 async function actual(req, res) {
-  const turno = await prisma.turnoCaja.findFirst({ where: { estado: "abierto" }, include: INCLUDE });
+  const parsed = z.string().uuid().optional().safeParse(req.query.cajaId);
+  if (!parsed.success) throw new HttpError(400, "Caja inválida");
+  const turno = await buscarTurnoAbierto(prisma, { cajaId: parsed.data, include: INCLUDE });
   res.json(turno ? serialize(turno) : null);
 }
 
@@ -113,10 +118,15 @@ async function obtener(req, res) {
 
 const abrirSchema = z.object({
   tipoTurnoId: z.string().uuid("Selecciona un tipo de turno"),
-  montoInicial: z.coerce.number().nonnegative(),
+  cajaId: z.string().uuid().optional(),
+  montoInicial: montoEnCentavos.optional(),
+  fondoFijoEsperado: montoEnCentavos.optional(),
+}).refine(({ montoInicial, fondoFijoEsperado }) => montoInicial !== undefined || fondoFijoEsperado !== undefined, {
+  path: ["montoInicial"],
+  message: "Ingresa el fondo de apertura",
 });
 
-// POST /api/turnos — abre un nuevo turno. Solo puede haber uno abierto a la vez.
+// POST /api/turnos — admite un turno abierto por caja.
 async function abrir(req, res) {
   const parsed = abrirSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -130,13 +140,22 @@ async function abrir(req, res) {
   // la segunda ya ve el turno que abrió la primera y responde 409.
   const turno = await prisma.$transaction(async (tx) => {
     await bloquearTurnoExclusivo(tx);
-    const abierto = await tx.turnoCaja.findFirst({ where: { estado: "abierto" } });
+    const { cajaId, montoInicial, fondoFijoEsperado } = parsed.data;
+    const caja = await tx.caja.findFirst({ where: cajaId ? { id: cajaId, activa: true } : { principal: true, activa: true } });
+    if (!caja) throw new HttpError(404, "Caja no encontrada o inactiva");
+    const abierto = await buscarTurnoAbierto(tx, { cajaId: caja.id });
     if (abierto) throw new HttpError(409, "Ya hay un turno de caja abierto");
+    // Si una pantalla anterior envía el fondo esperado, se conserva su comprobación.
+    const fondo = montoInicial !== undefined ? montoInicial / 100 : Number(caja.fondoFijo ?? 0);
+    if (montoInicial === undefined && aCentavos(fondo) !== fondoFijoEsperado) {
+      throw new HttpError(409, "Cambió el fondo fijo. Revisa el monto actualizado antes de abrir la caja");
+    }
 
     return tx.turnoCaja.create({
       data: {
+        cajaId: caja.id,
         tipoTurnoId: parsed.data.tipoTurnoId,
-        montoInicial: parsed.data.montoInicial,
+        montoInicial: fondo,
         usuarioAperturaId: req.user?.id,
       },
       include: INCLUDE,

@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search } from "lucide-react";
-import { navGroups, adminNavItems, categoriasNavItem } from "./nav-data";
+import { ArrowUpRight, Search } from "lucide-react";
+import { navItems, tieneAcceso } from "./nav-data";
 import { useAuth } from "@/context/AuthContext";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { matchesSearch, normalizeSearch } from "@/lib/search";
 
 export default function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { usuario } = useAuth();
@@ -13,41 +14,33 @@ export default function CommandPalette({ open, onOpenChange }: { open: boolean; 
   const [q, setQ] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
 
-  const items = useMemo(() => {
-    const base = navGroups.flatMap((g) => g.items);
-    const permitidos = base.filter((item) => usuario?.rol === "admin" || usuario?.permisos?.[item.seccion] !== false);
-    return usuario?.rol === "admin" ? [...permitidos, categoriasNavItem, ...adminNavItems] : permitidos;
-  }, [usuario]);
-
-  const resultados = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return items;
-    return items.filter((i) => i.label.toLowerCase().includes(term));
-  }, [items, q]);
+  const term = normalizeSearch(q);
+  const resultados = navItems.filter((item) => tieneAcceso(usuario, item) && matchesSearch(term, [item.label, item.group, item.to]));
 
   useEffect(() => {
-    if (open) {
+    activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  const setOpen = (next: boolean) => {
+    if (!next) {
       setQ("");
       setActiveIndex(0);
-      const t = setTimeout(() => inputRef.current?.focus(), 0);
-      return () => clearTimeout(t);
     }
-  }, [open]);
-
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [q]);
+    onOpenChange(next);
+  };
 
   const ir = (to: string) => {
-    onOpenChange(false);
+    setOpen(false);
     navigate(to);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, resultados.length - 1));
+      setActiveIndex((i) => Math.max(0, Math.min(i + 1, resultados.length - 1)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
@@ -59,43 +52,61 @@ export default function CommandPalette({ open, onOpenChange }: { open: boolean; 
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} className="sm:max-w-md top-[20%] translate-y-0 p-0 gap-0 overflow-hidden">
-        <DialogTitle className="sr-only">Buscar</DialogTitle>
-        <DialogDescription className="sr-only">Navega rápido a cualquier sección</DialogDescription>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent
+        className="top-[15%] translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-md"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          setQ("");
+          setActiveIndex(0);
+          inputRef.current?.focus();
+        }}
+      >
+        <DialogTitle className="sr-only">Buscar sección</DialogTitle>
+        <DialogDescription className="sr-only">Usa las flechas para elegir una sección y pulsa Enter para abrirla.</DialogDescription>
         <div className="flex items-center gap-2 px-4 border-b border-border">
-          <Search size={16} className="text-muted-foreground shrink-0" />
+          <Search size={16} aria-hidden="true" className="text-muted-foreground shrink-0" />
           <input
             ref={inputRef}
+            role="combobox"
+            aria-label="Buscar sección"
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-activedescendant={resultados[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+            autoComplete="off"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setActiveIndex(0);
+            }}
             onKeyDown={handleKeyDown}
-            placeholder="Ir a una sección..."
-            className="flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground font-body"
+            placeholder="Ir a una sección…"
+            className="min-w-0 flex-1 bg-transparent py-4 pr-7 text-sm outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="hidden sm:inline-flex shrink-0 items-center rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            Esc
-          </kbd>
         </div>
-        <div className="max-h-80 overflow-y-auto py-1.5">
-          {resultados.length === 0 && (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground font-body">Sin resultados.</div>
-          )}
+        {resultados.length === 0 && <p role="status" className="p-5 text-center text-sm text-muted-foreground">Sin resultados.</p>}
+        <div id={listId} role="listbox" aria-label="Secciones" className="max-h-[min(22rem,58dvh)] overflow-y-auto p-1.5">
           {resultados.map((item, i) => {
             const Icon = item.icon;
             return (
-              <button
+              <div
                 key={item.to}
+                id={`${listId}-${i}`}
+                ref={i === activeIndex ? activeRef : null}
+                role="option"
+                aria-selected={i === activeIndex}
                 onClick={() => ir(item.to)}
-                onMouseEnter={() => setActiveIndex(i)}
+                onPointerMove={() => setActiveIndex(i)}
                 className={cn(
-                  "flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm font-body cursor-pointer transition-colors",
+                  "flex w-full cursor-pointer items-center gap-2.5 rounded-md px-3 py-2.5 text-sm",
                   i === activeIndex ? "bg-accent text-accent-foreground" : "text-foreground"
                 )}
               >
                 <Icon size={15} className="shrink-0 text-muted-foreground" />
-                {item.label}
-              </button>
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {item.group !== "General" && <span className="text-[11px] text-muted-foreground">{item.group}</span>}
+                <ArrowUpRight size={13} aria-hidden="true" />
+              </div>
             );
           })}
         </div>

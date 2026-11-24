@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, AlertTriangle, Download } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { productosApi } from "../api/productos";
 import { ApiError } from "../api/client";
 import type { Producto } from "../types/producto";
@@ -12,12 +12,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { exportarCsv } from "../lib/exportCsv";
+import { hoyStr } from "../lib/fechas";
+import { matchesSearch, normalizeSearch } from "../lib/search";
+import { useAuth } from "../context/AuthContext";
+import { tieneAcceso } from "../components/nav-data";
 
 export default function StockPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [soloStockBajo, setSoloStockBajo] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const { usuario } = useAuth();
+  const soloStockBajo = params.get("bajo") === "1";
+  const puedeAjustar = tieneAcceso(usuario, { seccion: "bodega" });
+
+  const toggleStockBajo = () => {
+    const siguientes = new URLSearchParams(params);
+    if (soloStockBajo) siguientes.delete("bajo");
+    else siguientes.set("bajo", "1");
+    setParams(siguientes);
+  };
 
   const cargar = async () => {
     try {
@@ -34,10 +48,10 @@ export default function StockPage() {
 
   const filtered = useMemo(() => {
     if (!productos) return [];
-    const term = q.toLowerCase();
+    const term = normalizeSearch(q);
     return productos
-      .filter((p) => (p.nombre + p.sku + (p.categoria?.nombre || "")).toLowerCase().includes(term))
-      .filter((p) => !soloStockBajo || p.stock <= p.stockMinimo);
+      .filter((p) => matchesSearch(term, [p.nombre, p.sku, p.categoria?.nombre, p.codigoBarras]))
+      .filter((p) => !soloStockBajo || (p.activo && p.stock <= p.stockMinimo));
   }, [productos, q, soloStockBajo]);
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, `${q}-${soloStockBajo}`);
@@ -45,12 +59,13 @@ export default function StockPage() {
   const exportar = () => {
     if (filtered.length === 0) return;
     exportarCsv(
-      `stock-${new Date().toISOString().slice(0, 10)}.csv`,
+      `stock-${hoyStr()}.csv`,
       filtered.map((p) => ({
         SKU: p.sku,
         Nombre: p.nombre,
         Categoría: p.categoria?.nombre ?? "",
         Stock: p.stock,
+        "Bodega principal": p.stockCaja,
         "Stock mínimo": p.stockMinimo,
         Unidad: p.unidad.nombre,
         Proveedor: p.proveedor?.nombre ?? "",
@@ -60,20 +75,18 @@ export default function StockPage() {
 
   return (
     <div>
-      <p className="font-body text-xs text-muted-foreground mb-3">
-        Vista de solo lectura. Para ajustar cantidades usa{" "}
-        <Link to="/bodega" className="underline text-primary">
-          Bodega
+      {puedeAjustar && (
+        <Link to="/bodega" className="mb-3 inline-block text-sm text-primary underline">
+          Registrar entrada o salida
         </Link>
-        .
-      </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Buscar por nombre, SKU o categoría" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input className="pl-9" aria-label="Buscar productos" placeholder="Buscar producto, SKU, código o categoría" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <Button variant={soloStockBajo ? "default" : "outline"} onClick={() => setSoloStockBajo((v) => !v)}>
+        <Button variant={soloStockBajo ? "default" : "outline"} onClick={toggleStockBajo} aria-pressed={soloStockBajo}>
           <AlertTriangle size={14} /> Stock bajo
         </Button>
         <Button variant="outline" onClick={exportar} disabled={filtered.length === 0}>
@@ -104,18 +117,20 @@ export default function StockPage() {
               <TableRow>
                 <TableHead>Producto</TableHead>
                 <TableHead>Mínimo</TableHead>
-                <TableHead className="text-right">Stock actual</TableHead>
+                <TableHead className="text-right">Stock total</TableHead>
+                <TableHead className="text-right">Bodega principal</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pageItems.map((p) => {
-                const low = p.stock <= p.stockMinimo;
+                const low = p.activo && p.stock <= p.stockMinimo;
                 return (
                   <TableRow key={p.id}>
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
                         <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.sku}</span>
+                        {!p.activo && <Badge variant="secondary">Inactivo</Badge>}
                         {low && (
                           <Badge variant="warning">
                             <AlertTriangle size={11} /> Stock bajo
@@ -128,6 +143,9 @@ export default function StockPage() {
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm font-semibold text-foreground">
                       {p.stock} <span className="text-muted-foreground font-normal">{p.unidad.nombre}</span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm text-foreground">
+                      {p.stockCaja} <span className="text-muted-foreground">{p.unidad.nombre}</span>
                     </TableCell>
                   </TableRow>
                 );

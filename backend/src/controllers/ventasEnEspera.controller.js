@@ -1,11 +1,18 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { stockCajaInclude, conStockCaja } = require("../lib/stockBodega");
 
 const INCLUDE = {
   cliente: { select: { id: true, nombre: true } },
   usuario: { select: { id: true, nombre: true } },
-  items: { include: { producto: { select: { id: true, nombre: true, sku: true, precioVenta: true, stock: true } } } },
+  items: {
+    include: {
+      producto: {
+        select: { id: true, nombre: true, sku: true, precioVenta: true, stock: true, activo: true, ventaPublico: true, inventariable: true, stockBodegas: stockCajaInclude },
+      },
+    },
+  },
 };
 
 function serialize(v) {
@@ -15,7 +22,7 @@ function serialize(v) {
     items: v.items.map((it) => ({
       ...it,
       descuento: Number(it.descuento),
-      producto: it.producto && { ...it.producto, precioVenta: Number(it.producto.precioVenta) },
+      producto: it.producto && { ...conStockCaja(it.producto), precioVenta: Number(it.producto.precioVenta) },
     })),
   };
 }

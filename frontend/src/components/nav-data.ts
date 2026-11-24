@@ -1,111 +1,73 @@
 import {
-  LayoutDashboard,
-  ShoppingCart,
-  Clock,
-  Package,
-  Boxes,
-  ArrowLeftRight,
-  Tag,
-  Users,
-  Truck,
-  Receipt,
-  ShieldCheck,
-  Users2,
-  Tags,
-  IdCard,
-  ListTree,
-  LineChart,
-  Warehouse,
-  History,
-  Store,
+  LayoutDashboard, ShoppingCart, Clock, Package, Boxes, ArrowLeftRight, Tag, Users, Truck, Receipt,
+  ShieldCheck, Users2, Tags, IdCard, ListTree, LineChart, Warehouse, History, Store, Ruler, Settings2, Wrench, ClipboardCheck, Banknote,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { Seccion } from "@/types/auth";
+import type { Seccion, Usuario } from "@/types/auth";
 
-export type NavItem = {
+type NavItem = {
   to: string;
-  seccion: Seccion;
   label: string;
   icon: LucideIcon;
-};
+} & ({ seccion: Seccion } | { adminOnly: true });
 
-export type NavGroup = {
-  label: string;
-  items: NavItem[];
-};
-
-export const navGroups: NavGroup[] = [
+export const navGroups = [
   {
     label: "General",
+    icon: LayoutDashboard,
     items: [
       { to: "/dashboard", seccion: "dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/caja", seccion: "caja", label: "Caja", icon: ShoppingCart },
-      { to: "/turnos", seccion: "turnos", label: "Turnos", icon: Clock },
     ],
   },
   {
     label: "Consultas",
+    icon: LineChart,
     items: [
-      { to: "/historial", seccion: "historial", label: "Historial", icon: Receipt },
-      { to: "/stock", seccion: "stock", label: "Stock", icon: Boxes },
+      { to: "/historial", seccion: "historial", label: "Historial de ventas", icon: Receipt },
       { to: "/consultas", seccion: "consultas", label: "Reportes", icon: LineChart },
+      { to: "/auditoria", adminOnly: true, label: "Auditoría", icon: History },
+    ],
+  },
+  {
+    label: "Inventario",
+    icon: Boxes,
+    items: [
+      { to: "/stock", seccion: "stock", label: "Stock", icon: Boxes },
+      { to: "/bodega", seccion: "bodega", label: "Entradas y salidas", icon: ArrowLeftRight },
+      { to: "/bodegas", seccion: "bodega", label: "Bodegas", icon: Warehouse },
+      { to: "/toma-inventario", seccion: "bodega", label: "Toma y ajuste de stock", icon: ClipboardCheck },
     ],
   },
   {
     label: "Mantención",
+    icon: Settings2,
     items: [
       { to: "/productos", seccion: "productos", label: "Productos", icon: Package },
       { to: "/precios", seccion: "precios", label: "Precios", icon: Tag },
       { to: "/listas-precio", seccion: "precios", label: "Listas de precios", icon: ListTree },
       { to: "/clientes", seccion: "clientes", label: "Clientes", icon: Users },
       { to: "/proveedores", seccion: "proveedores", label: "Proveedores", icon: Truck },
-      { to: "/bodega", seccion: "bodega", label: "Entradas y salidas", icon: ArrowLeftRight },
-      { to: "/bodegas", seccion: "bodega", label: "Bodegas", icon: Warehouse },
+      { to: "/categorias", adminOnly: true, label: "Categorías", icon: Tags },
+      { to: "/unidades", adminOnly: true, label: "Unidades", icon: Ruler },
+      { to: "/turnos", seccion: "turnos", label: "Turnos", icon: Clock },
+      { to: "/negocio", adminOnly: true, label: "Datos del negocio", icon: Store },
     ],
   },
-];
+  {
+    label: "Herramientas",
+    icon: Wrench,
+    items: [
+      { to: "/control-cajas", adminOnly: true, label: "Control de cajas", icon: Banknote },
+      { to: "/permisos", adminOnly: true, label: "Permisos", icon: ShieldCheck },
+      { to: "/roles", adminOnly: true, label: "Roles", icon: IdCard },
+      { to: "/usuarios", adminOnly: true, label: "Usuarios", icon: Users2 },
+    ],
+  },
+] as const satisfies readonly { label: string; icon: LucideIcon; items: readonly NavItem[] }[];
 
-// Categorías vive dentro del catálogo de Mantención visualmente, pero su ruta sigue
-// gateada por RequireAdmin (no por un permiso de sección) — así que no puede ir dentro
-// de `navGroups` (eso se filtra por permiso, no por rol, y mostraría el link a
-// cualquiera con acceso a "productos" aunque la ruta lo bloqueara igual). AppSidebarNav
-// la inserta al final del grupo "Mantención" solo cuando el usuario es admin.
-export const categoriasNavItem: NavItem = {
-  to: "/categorias",
-  seccion: "productos", // no aplica: el acceso real es RequireAdmin, no un permiso de sección
-  label: "Categorías",
-  icon: Tags,
-};
+export const navItems = navGroups.flatMap(({ label, items }) => items.map((item) => ({ ...item, group: label })));
 
-export const adminNavItems: NavItem[] = [
-  {
-    to: "/usuarios",
-    seccion: "caja", // no aplica: el acceso real se resuelve por rol, no por permisos de sección
-    label: "Usuarios",
-    icon: Users2,
-  },
-  {
-    to: "/roles",
-    seccion: "caja", // no aplica: el acceso real se resuelve por rol, no por permisos de sección
-    label: "Roles",
-    icon: IdCard,
-  },
-  {
-    to: "/permisos",
-    seccion: "caja", // no aplica: el acceso real se resuelve por rol, no por permisos de sección
-    label: "Permisos",
-    icon: ShieldCheck,
-  },
-  {
-    to: "/negocio",
-    seccion: "caja", // no aplica: el acceso real se resuelve por rol, no por permisos de sección
-    label: "Datos del negocio",
-    icon: Store,
-  },
-  {
-    to: "/auditoria",
-    seccion: "caja", // no aplica: el acceso real se resuelve por rol, no por permisos de sección
-    label: "Auditoría",
-    icon: History,
-  },
-];
+export function tieneAcceso(usuario: Usuario | null, regla: { seccion: Seccion } | { adminOnly: true }) {
+  return !!usuario && (usuario.rol === "admin" || ("seccion" in regla && usuario.permisos[regla.seccion] !== false));
+}

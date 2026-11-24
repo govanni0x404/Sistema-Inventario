@@ -109,4 +109,21 @@ async function cambiarPassword(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { login, me, cambiarPassword, serializeUsuario };
+async function solicitarRecuperacion(req, res) {
+  const parsed = z.string().trim().email().safeParse(req.body?.email);
+  if (!parsed.success) return res.status(400).json({ error: "Escribe un correo válido" });
+  const usuario = await prisma.usuario.findFirst({
+    where: { activo: true, email: { equals: parsed.data, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (usuario) {
+    await registrarAuditoria(prisma, {
+      accion: "recuperacion_solicitada",
+      usuarioAfectadoId: usuario.id,
+      detalle: "Verifica la identidad de la persona antes de restablecer su clave en Usuarios.",
+    });
+  }
+  res.status(202).json({ ok: true });
+}
+
+module.exports = { login, me, cambiarPassword, serializeUsuario, solicitarRecuperacion };

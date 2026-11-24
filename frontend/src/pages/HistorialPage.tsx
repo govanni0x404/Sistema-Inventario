@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, Search } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { ventasApi } from "../api/ventas";
 import { clientesApi } from "../api/clientes";
 import { turnosApi } from "../api/turnos";
@@ -18,6 +19,8 @@ import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { exportarCsv } from "../lib/exportCsv";
 import { LOCALE, money } from "../lib/format";
+import { folioComprobante } from "../lib/printTicket";
+import { validarRango } from "../lib/fechas";
 
 
 const METODOS: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
@@ -64,9 +67,25 @@ export default function HistorialPage() {
   const [clienteId, setClienteId] = useState("");
   const [metodoPago, setMetodoPago] = useState("");
   const [turnoCajaId, setTurnoCajaId] = useState("");
+  const [tipo, setTipo] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const folio = searchParams.get("folio")?.trim() ?? "";
+  const [entradaFolio, setEntradaFolio] = useState({ aplicada: folio, texto: folio });
+  const folioTexto = entradaFolio.aplicada === folio ? entradaFolio.texto : folio;
+  const solicitudActual = useRef(0);
+
+  const cambiarFolio = (valor: string) => {
+    const aplicado = valor.trim();
+    setEntradaFolio({ aplicada: aplicado, texto: aplicado });
+    if (aplicado === folio) return;
+    const query = new URLSearchParams(searchParams);
+    if (aplicado) query.set("folio", aplicado);
+    else query.delete("folio");
+    setSearchParams(query, { replace: true });
+  };
 
   const parametrosFecha = () => {
-    if (turnoCajaId) return {};
+    if (turnoCajaId || folio) return {};
     if (rango === "hoy") return { fecha: hoyStr() };
     if (rango === "custom") return desdeCustom && hastaCustom ? { desde: desdeCustom, hasta: hastaCustom } : { fecha: hoyStr() };
     const dias = rango === "7d" ? 7 : rango === "30d" ? 30 : 90;
@@ -74,8 +93,18 @@ export default function HistorialPage() {
   };
 
   const cargar = async () => {
+    const solicitud = ++solicitudActual.current;
+    setVentas(null);
+    setTruncado(false);
+    setLoadError(null);
     try {
-      setLoadError(null);
+      if (rango === "custom" && !turnoCajaId && !folio) {
+        const error = validarRango(desdeCustom, hastaCustom);
+        if (error) {
+          setLoadError(error);
+          return;
+        }
+      }
       const [v, c, t] = await Promise.all([
         ventasApi.listar({
           ...parametrosFecha(),
@@ -83,52 +112,61 @@ export default function HistorialPage() {
           metodoPago: metodoPago || undefined,
           turnoCajaId: turnoCajaId || undefined,
           limite: MAX_VENTAS + 1,
+          folio: folio || undefined,
+          tipo: tipo || undefined,
         }),
         clientesApi.listar(),
         turnosApi.listar(),
       ]);
+      if (solicitud !== solicitudActual.current) return;
       setTruncado(v.length > MAX_VENTAS);
       setVentas(v.slice(0, MAX_VENTAS));
       setClientes(c);
       setTurnos(t);
     } catch (e) {
-      setLoadError(e instanceof ApiError ? e.message : "No se pudo conectar con el servidor");
+      if (solicitud === solicitudActual.current) {
+        setLoadError(e instanceof ApiError ? e.message : "No se pudo conectar con el servidor");
+      }
     }
   };
 
   useEffect(() => {
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rango, desdeCustom, hastaCustom, clienteId, metodoPago, turnoCajaId]);
+  }, [rango, desdeCustom, hastaCustom, clienteId, metodoPago, turnoCajaId, tipo, folio]);
 
   const nombreCliente = (v: Venta) => v.cliente?.nombre || "Cliente general";
+  const totalDevuelto = (v: Venta) => (v.devoluciones ?? []).reduce((total, d) => total + d.total, 0);
 
   const nombreTurno = (t: TurnoCaja) =>
-    `${t.tipoTurno.nombre} · ${new Date(t.fechaApertura).toLocaleDateString(LOCALE, { day: "numeric", month: "short" })}${
+    `${t.caja.nombre} · ${t.tipoTurno.nombre} · ${new Date(t.fechaApertura).toLocaleDateString(LOCALE, { day: "numeric", month: "short" })}${
       t.estado === "abierto" ? " (abierto)" : ""
     }`;
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(
     ventas ?? [],
     10,
-    `${rango}-${desdeCustom}-${hastaCustom}-${clienteId}-${metodoPago}-${turnoCajaId}`
+    `${rango}-${desdeCustom}-${hastaCustom}-${clienteId}-${metodoPago}-${turnoCajaId}-${tipo}-${folio}`
   );
 
-  const hayFiltros = rango !== "hoy" || clienteId || metodoPago || turnoCajaId;
+  const hayFiltros = rango !== "hoy" || clienteId || metodoPago || turnoCajaId || tipo || folio || folioTexto;
 
   const exportar = () => {
     if (!ventas || ventas.length === 0) return;
     exportarCsv(
       `historial-ventas-${hoyStr()}.csv`,
       ventas.map((v) => ({
+        Folio: folioComprobante(v.id),
         Fecha: new Date(v.fecha).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }),
         Cliente: nombreCliente(v),
         Turno: v.turnoCaja?.tipoTurno.nombre ?? "",
+        Caja: v.turnoCaja?.caja.nombre ?? "",
         "Método de pago": v.esCortesia ? `Cortesía (${v.motivoCortesia ?? ""})` : v.pagos.map((p) => p.metodoPago).join(" + "),
         Subtotal: v.subtotal,
         Descuento: v.descuento,
         Total: v.total,
-        Devuelta: (v.devoluciones?.length ?? 0) > 0 ? "Sí" : "No",
+        "Tiene devolución": (v.devoluciones?.length ?? 0) > 0 ? "Sí" : "No",
+        "Monto reembolsado": totalDevuelto(v),
       }))
     );
   };
@@ -142,9 +180,9 @@ export default function HistorialPage() {
             setRango(v as RangoPreset);
             setTurnoCajaId("");
           }}
-          disabled={!!turnoCajaId}
+          disabled={!!turnoCajaId || !!folio}
         >
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" aria-label="Período">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -155,11 +193,11 @@ export default function HistorialPage() {
             ))}
           </SelectContent>
         </Select>
-        {rango === "custom" && !turnoCajaId && (
+        {rango === "custom" && !turnoCajaId && !folio && (
           <>
-            <Input type="date" className="w-auto" value={desdeCustom} onChange={(e) => setDesdeCustom(e.target.value)} />
+            <Input type="date" aria-label="Desde" className="w-auto" value={desdeCustom} onChange={(e) => setDesdeCustom(e.target.value)} />
             <span className="font-body text-xs text-muted-foreground">a</span>
-            <Input type="date" className="w-auto" value={hastaCustom} onChange={(e) => setHastaCustom(e.target.value)} />
+            <Input type="date" aria-label="Hasta" className="w-auto" value={hastaCustom} onChange={(e) => setHastaCustom(e.target.value)} />
           </>
         )}
         <Select
@@ -169,7 +207,7 @@ export default function HistorialPage() {
             setRango("hoy");
           }}
         >
-          <SelectTrigger className="w-52">
+          <SelectTrigger className="w-52" aria-label="Turno">
             <SelectValue placeholder="Todos los turnos" />
           </SelectTrigger>
           <SelectContent>
@@ -182,7 +220,7 @@ export default function HistorialPage() {
           </SelectContent>
         </Select>
         <Select value={clienteId || TODOS} onValueChange={(v) => setClienteId(v === TODOS ? "" : v)}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-48" aria-label="Cliente">
             <SelectValue placeholder="Todos los clientes" />
           </SelectTrigger>
           <SelectContent>
@@ -195,7 +233,7 @@ export default function HistorialPage() {
           </SelectContent>
         </Select>
         <Select value={metodoPago || TODOS} onValueChange={(v) => setMetodoPago(v === TODOS ? "" : v)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" aria-label="Forma de pago">
             <SelectValue placeholder="Todos los métodos" />
           </SelectTrigger>
           <SelectContent>
@@ -207,6 +245,15 @@ export default function HistorialPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={tipo || TODOS} onValueChange={(v) => setTipo(v === TODOS ? "" : v)}>
+          <SelectTrigger className="w-44" aria-label="Tipo de venta"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TODOS}>Todos los tipos</SelectItem>
+            <SelectItem value="cobrada">Ventas cobradas</SelectItem>
+            <SelectItem value="cortesia">Cortesías</SelectItem>
+            <SelectItem value="con-devolucion">Con devolución</SelectItem>
+          </SelectContent>
+        </Select>
         {hayFiltros && (
           <Button
             variant="ghost"
@@ -216,6 +263,8 @@ export default function HistorialPage() {
               setClienteId("");
               setMetodoPago("");
               setTurnoCajaId("");
+              setTipo("");
+              cambiarFolio("");
             }}
           >
             Limpiar filtros
@@ -224,6 +273,23 @@ export default function HistorialPage() {
         <Button variant="outline" size="sm" onClick={exportar} disabled={!ventas || ventas.length === 0} className="ml-auto">
           <Download size={14} /> Exportar CSV
         </Button>
+      </div>
+      <div className="mb-4 space-y-1">
+        <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => {
+          e.preventDefault();
+          cambiarFolio(folioTexto);
+        }}>
+          <Input
+            aria-label="Folio del comprobante"
+            placeholder="Folio del comprobante"
+            className="w-55"
+            maxLength={36}
+            value={folioTexto}
+            onChange={(e) => setEntradaFolio({ aplicada: folio, texto: e.target.value })}
+          />
+          <Button type="submit" variant="outline"><Search size={14} /> Buscar folio</Button>
+        </form>
+        {folio && <p className="text-xs text-muted-foreground">La búsqueda por folio abarca todas las fechas.</p>}
       </div>
 
       {loadError && (
@@ -253,22 +319,25 @@ export default function HistorialPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Folio</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Fecha</TableHead>
                 <TableHead>Turno</TableHead>
                 <TableHead>Método</TableHead>
-                <TableHead></TableHead>
+                <TableHead>Devoluciones</TableHead>
                 <TableHead className="text-right">Total</TableHead>
+                <TableHead><span className="sr-only">Acciones</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pageItems.map((v) => (
                 <TableRow key={v.id} className="cursor-pointer" onClick={() => setDetalle(v)}>
+                  <TableCell className="font-mono text-xs font-semibold">{folioComprobante(v.id)}</TableCell>
                   <TableCell className="font-body text-sm font-medium text-foreground">{nombreCliente(v)}</TableCell>
                   <TableCell className="font-body text-xs text-muted-foreground">
                     {new Date(v.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}
                   </TableCell>
-                  <TableCell className="font-body text-xs text-muted-foreground">{v.turnoCaja?.tipoTurno.nombre ?? "—"}</TableCell>
+                  <TableCell className="font-body text-xs text-muted-foreground">{v.turnoCaja ? `${v.turnoCaja.caja.nombre} · ${v.turnoCaja.tipoTurno.nombre}` : "—"}</TableCell>
                   <TableCell>
                     {v.esCortesia ? (
                       <Badge variant="warning">Cortesía</Badge>
@@ -276,16 +345,24 @@ export default function HistorialPage() {
                       <div className="flex flex-wrap gap-1">
                         {v.pagos.map((p) => (
                           <Badge key={p.id} variant="secondary" className="capitalize">
-                            {p.metodoPago}
+                            {p.metodoPago} · {money(p.monto)}
                           </Badge>
                         ))}
                       </div>
                     )}
                   </TableCell>
                   <TableCell>
-                    {(v.devoluciones?.length ?? 0) > 0 && <Badge variant="destructive">Devuelta</Badge>}
+                    {(v.devoluciones?.length ?? 0) > 0 && <Badge variant="outline">{v.devoluciones?.length} · {money(totalDevuelto(v))}</Badge>}
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm font-semibold text-primary">{money(v.total)}</TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="sm" aria-label={`Ver detalle del folio ${folioComprobante(v.id)}`} onClick={(e) => {
+                      e.stopPropagation();
+                      setDetalle(v);
+                    }}>
+                      Ver detalle
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

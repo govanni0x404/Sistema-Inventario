@@ -6,6 +6,7 @@ export const productosApi = {
   listar: (q?: string) =>
     api.get<Producto[]>(`/productos${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   listarConStockBajo: () => api.get<Producto[]>("/productos?stockBajo=true&activo=true"),
+  generarCodigo: () => api.post<{ codigoBarras: string }>("/productos/codigo-barras", {}),
   crear: (data: ProductoInput) => api.post<Producto>("/productos", data),
   actualizar: (id: string, data: Partial<ProductoInput>) =>
     api.put<Producto>(`/productos/${id}`, data),

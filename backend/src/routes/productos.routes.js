@@ -9,8 +9,10 @@ const router = Router();
 // El catálogo de productos queda abierto a cualquier usuario autenticado: Caja, Stock y
 // Bodega necesitan poder leerlo aunque el rol no tenga habilitada la sección "Productos".
 router.get("/", asyncHandler(controller.listar));
+router.get("/:id/imagen", asyncHandler(controller.obtenerImagen));
 router.get("/:id", asyncHandler(controller.obtener));
 router.post("/", requireSeccion("productos"), asyncHandler(controller.crear));
+router.post("/codigo-barras", requireSeccion("productos"), asyncHandler(controller.generarCodigo));
 router.post("/importar", requireSeccion("productos"), asyncHandler(controller.importar));
 router.put("/:id", requireSeccion("productos"), asyncHandler(controller.actualizar));
 router.delete("/:id", requireSeccion("productos"), asyncHandler(controller.eliminar));

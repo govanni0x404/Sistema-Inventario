@@ -1,3 +1,4 @@
+const { randomUUID } = require("node:crypto");
 const request = require("supertest");
 const app = require("../src/app");
 const { prisma, resetDb, crearUsuario, crearProducto, crearTipoTurno, crearBodegaPrincipal } = require("./helpers");
@@ -25,6 +26,22 @@ describe("Ventas", () => {
       .send({ pagos: [{ metodoPago: "efectivo", monto: 20 }], items: [{ productoId: producto.id, cantidad: 1 }] });
 
     expect(res.status).toBe(409);
+  });
+
+  test("respeta venta al público y conserva la política de stock al devolver", async () => {
+    const auth = { Authorization: `Bearer ${cajero.token}` };
+    await request(app).post("/api/turnos").set(auth).send({ tipoTurnoId: tipoTurno.id, montoInicial: 0 }).expect(201);
+    const servicio = await crearProducto({ stock: 0, precioVenta: 30, inventariable: false });
+    const payload = { pagos: [{ metodoPago: "tarjeta", monto: 30 }], items: [{ productoId: servicio.id, cantidad: 1 }] };
+    await prisma.producto.update({ where: { id: servicio.id }, data: { ventaPublico: false } });
+    await request(app).post("/api/ventas").set(auth).send(payload).expect(409);
+    await prisma.producto.update({ where: { id: servicio.id }, data: { ventaPublico: true } });
+    const { body: venta } = await request(app).post("/api/ventas").set(auth).send(payload).expect(201);
+    await prisma.producto.update({ where: { id: servicio.id }, data: { inventariable: true } });
+    await request(app).post(`/api/ventas/${venta.id}/devolucion`).set(auth)
+      .send({ items: [{ ventaItemId: venta.items[0].id, cantidad: 1 }] }).expect(201);
+    expect(await prisma.movimientoStock.count({ where: { productoId: servicio.id } })).toBe(0);
+    expect((await prisma.producto.findUnique({ where: { id: servicio.id } })).stock).toBe(0);
   });
 
   test("crea la venta, descuenta stock y aplica descuentos por item y por ticket", async () => {
@@ -110,6 +127,49 @@ describe("Ventas", () => {
       });
 
     expect(res.status).toBe(400);
+  });
+
+  test("un pago con diferencia de un centavo no modifica el stock ni la caja", async () => {
+    const headers = { Authorization: `Bearer ${cajero.token}` };
+    await request(app).post("/api/turnos").set(headers).send({ tipoTurnoId: tipoTurno.id, montoInicial: 100 });
+    const res = await request(app).post("/api/ventas").set(headers).send({
+      pagos: [{ metodoPago: "efectivo", monto: 19.99 }],
+      items: [{ productoId: producto.id, cantidad: 1 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(await prisma.venta.count()).toBe(0);
+    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
+    expect(actualizado.stock).toBe(10);
+  });
+
+  test("los reintentos simultáneos y posteriores al cierre recuperan la venta original", async () => {
+    const headers = { Authorization: `Bearer ${cajero.token}` };
+    const turno = await request(app).post("/api/turnos").set(headers).send({ tipoTurnoId: tipoTurno.id, montoInicial: 100 });
+    const body = {
+      claveIdempotencia: randomUUID(),
+      pagos: [{ metodoPago: "efectivo", monto: 20 }],
+      items: [{ productoId: producto.id, cantidad: 1 }],
+    };
+    const cobrar = (datos = body) => request(app).post("/api/ventas").set(headers).send(datos);
+    const [primera, segunda] = await Promise.all([cobrar(), cobrar()]);
+    expect([primera.status, segunda.status]).toEqual([201, 201]);
+    expect(primera.body.id).toBe(segunda.body.id);
+    expect(primera.body.claveIdempotencia).toBeUndefined();
+    expect(primera.body.huellaSolicitud).toBeUndefined();
+
+    const cierre = await request(app).post(`/api/turnos/${turno.body.id}/cerrar`).set(headers).send({ montoContado: 120 });
+    expect(cierre.status).toBe(200);
+    expect(cierre.body.diferencia).toBe(0);
+    const repetida = await cobrar();
+    expect(repetida.status).toBe(201);
+    expect(repetida.body.id).toBe(primera.body.id);
+
+    const distinta = await cobrar({ ...body, pagos: [{ metodoPago: "tarjeta", monto: 20 }] });
+    expect(distinta.status).toBe(409);
+    expect(await prisma.venta.count()).toBe(1);
+    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
+    expect(actualizado.stock).toBe(9);
   });
 
   test("rechaza la venta si el descuento del ticket excede el subtotal", async () => {

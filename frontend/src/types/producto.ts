@@ -13,16 +13,30 @@ export interface UnidadProducto {
   nombre: string;
 }
 
-export interface Producto {
+export type TipoImpuestoProducto = "iva19" | "exento";
+
+interface ParametrosProducto {
+  ventaPublico: boolean;
+  inventariable: boolean;
+  mostrarPrecio: boolean;
+  ventaVolumen: boolean;
+  esPack: boolean;
+}
+
+export interface Producto extends ParametrosProducto {
   id: string;
   sku: string;
   codigoBarras: string | null;
   nombre: string;
   categoriaId: string | null;
+  subfamilia: string | null;
+  tipoImpuesto: TipoImpuestoProducto;
+  imagenUrl?: string | null;
   categoria: CategoriaProducto | null;
   precioCompra: number;
   precioVenta: number;
   stock: number;
+  stockCaja: number;
   stockMinimo: number;
   unidadId: string;
   unidad: UnidadProducto;
@@ -38,13 +52,18 @@ export type ProductoInput = {
   codigoBarras?: string | null;
   nombre: string;
   categoriaId?: string | null;
+  subfamilia?: string | null;
+  tipoImpuesto?: TipoImpuestoProducto;
+  imagenUrl?: string | null;
+  imagenArchivo?: string | null;
+  activo?: boolean;
   precioCompra?: number;
   precioVenta: number;
   stock?: number;
   stockMinimo?: number;
   unidadId: string;
   proveedorId?: string | null;
-};
+} & Partial<ParametrosProducto>;
 
 export interface ImportarResultadoFila {
   fila: number;

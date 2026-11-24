@@ -195,6 +195,8 @@ export default function MovimientosPage() {
                                     <div className="text-foreground truncate">
                                       {m.tipo === "entrada" ? "Entrada" : "Salida"} de {m.cantidad} {p.unidad.nombre}
                                       {m.origen === "venta" && <span className="text-muted-foreground"> · venta</span>}
+                                      {m.origen === "inventario" && <span className="text-muted-foreground"> · toma de inventario</span>}
+                                      {m.origen === "ajuste" && <span className="text-muted-foreground"> · ajuste de stock</span>}
                                     </div>
                                     <div className="text-muted-foreground truncate">
                                       {new Date(m.fecha).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}

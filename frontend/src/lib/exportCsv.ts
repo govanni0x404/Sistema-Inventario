@@ -1,6 +1,7 @@
 function escapeCampo(v: unknown) {
   const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const limpio = typeof v === "string" && /^(?:\s*[=+\-@]|[\t\r\n])/.test(s) ? `'${s}` : s;
+  return /[",\r\n]/.test(limpio) ? `"${limpio.replace(/"/g, '""')}"` : limpio;
 }
 
 // El BOM al inicio hace que Excel detecte UTF-8 correctamente al abrir el CSV (si no,

@@ -1,15 +1,24 @@
+const path = require("node:path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+
+if (process.env.NODE_ENV === "production") {
+  throw new Error("El seed de demostración solo está disponible fuera de producción.");
+}
+
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
+const { bloquearCatalogoBodegas, inicializarStockProducto } = require("../src/lib/stockBodega");
 
 const prisma = new PrismaClient();
 
-async function main() {
-  const admin = await prisma.rol.upsert({
+async function crearDatosDemostracion(tx) {
+  await bloquearCatalogoBodegas(tx);
+  const admin = await tx.rol.upsert({
     where: { nombre: "admin" },
     update: {},
     create: { nombre: "admin", protegido: true },
   });
-  const cajero = await prisma.rol.upsert({
+  const cajero = await tx.rol.upsert({
     where: { nombre: "cajero" },
     update: {},
     create: { nombre: "cajero" },
@@ -21,14 +30,14 @@ async function main() {
   ];
 
   for (const u of usuarios) {
-    await prisma.usuario.upsert({
+    await tx.usuario.upsert({
       where: { email: u.email },
       update: {},
       create: { ...u, password: await bcrypt.hash(u.password, 10) },
     });
   }
 
-  const distribuidora = await prisma.proveedor.upsert({
+  const distribuidora = await tx.proveedor.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
     update: {},
     create: {
@@ -41,16 +50,16 @@ async function main() {
   });
 
   // Catálogos que el producto necesita como FK (categoría opcional, unidad obligatoria).
-  const unidadPieza = await prisma.unidad.upsert({ where: { nombre: "Pieza" }, update: {}, create: { nombre: "Pieza" } });
+  const unidadPieza = await tx.unidad.upsert({ where: { nombre: "Pieza" }, update: {}, create: { nombre: "Pieza" } });
   const categorias = {};
   for (const nombre of ["Abarrotes", "Bebidas", "Limpieza"]) {
-    categorias[nombre] = await prisma.categoria.upsert({ where: { nombre }, update: {}, create: { nombre } });
+    categorias[nombre] = await tx.categoria.upsert({ where: { nombre }, update: {}, create: { nombre } });
   }
 
   // La migración de bodegas crea "Bodega Principal"; si la BD se creó de otra forma, se asegura aquí.
-  let principal = await prisma.bodega.findFirst({ where: { principal: true } });
+  const principal = await tx.bodega.findFirst({ where: { principal: true } });
   if (!principal) {
-    principal = await prisma.bodega.create({ data: { nombre: "Bodega Principal", principal: true } });
+    await tx.bodega.create({ data: { nombre: "Bodega Principal", principal: true } });
   }
 
   const productos = [
@@ -62,24 +71,27 @@ async function main() {
   ];
 
   for (const { categoria, ...producto } of productos) {
-    const existente = await prisma.producto.findUnique({ where: { sku: producto.sku } });
+    const existente = await tx.producto.findUnique({ where: { sku: producto.sku } });
     if (existente) continue;
     // Producto.stock es el total cacheado: debe coincidir con la suma de StockBodega.
-    await prisma.producto.create({
+    const creado = await tx.producto.create({
       data: {
         ...producto,
         categoriaId: categorias[categoria].id,
         unidadId: unidadPieza.id,
-        stockBodegas: { create: [{ bodegaId: principal.id, cantidad: producto.stock }] },
       },
     });
+    await inicializarStockProducto(tx, creado.id, creado.stock);
   }
 
   const tiposTurno = ["Turno Mañana", "Turno Tarde"];
   for (const nombre of tiposTurno) {
-    await prisma.tipoTurno.upsert({ where: { nombre }, update: {}, create: { nombre } });
+    await tx.tipoTurno.upsert({ where: { nombre }, update: {}, create: { nombre } });
   }
+}
 
+async function main() {
+  await prisma.$transaction(crearDatosDemostracion);
   console.log("Seed completado");
   console.log("Usuarios de prueba: admin@inventario.local / admin123, cajero@inventario.local / cajero123");
 }
@@ -87,6 +99,6 @@ async function main() {
 main()
   .catch((e) => {
     console.error(e);
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(() => prisma.$disconnect());

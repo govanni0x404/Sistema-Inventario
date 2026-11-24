@@ -42,6 +42,15 @@ model Producto {
   nombre          String
   categoriaId     String?
   categoria       Categoria?        @relation(fields: [categoriaId], references: [id])
+  subfamilia      String?
+  tipoImpuesto    String            @default("iva19")
+  ventaPublico    Boolean           @default(true)
+  inventariable   Boolean           @default(true)
+  mostrarPrecio   Boolean           @default(true)
+  ventaVolumen    Boolean           @default(false)
+  esPack          Boolean           @default(false)
+  imagenExterna   String?
+  foto            ProductoImagen?
   precioCompra    Decimal           @db.Decimal(10, 2)
   precioVenta     Decimal           @db.Decimal(10, 2)
   stock           Int               @default(0)
@@ -67,6 +76,16 @@ model Producto {
   @@map("productos")
 }
 
+model ProductoImagen {
+  productoId   String   @id
+  producto     Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  mime         String
+  datos        Bytes
+  actualizadoEn DateTime @updatedAt
+
+  @@map("productos_imagenes")
+}
+
 model HistorialPrecio {
   id                   String   @id @default(uuid())
   productoId           String
@@ -88,7 +107,7 @@ model MovimientoStock {
   productoId      String
   producto        Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
   tipo            String   // "entrada" | "salida"
-  origen          String   @default("manual") // "manual" | "venta" | "devolucion" | "transferencia"
+  origen          String   @default("manual") // "manual" | "venta" | "devolucion" | "transferencia" | "inventario" | "ajuste"
   cantidad        Int
   stockResultante Int
   motivo          String?
@@ -98,12 +117,33 @@ model MovimientoStock {
   usuario         Usuario? @relation(fields: [usuarioId], references: [id])
   bodegaId        String?
   bodega          Bodega?  @relation(fields: [bodegaId], references: [id])
+  tomaInventarioId String?
+  tomaInventario  TomaInventario? @relation(fields: [tomaInventarioId], references: [id], onDelete: SetNull)
   fecha           DateTime @default(now())
 
   @@index([productoId])
   @@index([ventaId])
   @@index([bodegaId])
+  @@index([tomaInventarioId])
   @@map("movimientos_stock")
+}
+
+model TomaInventario {
+  id            String            @id
+  bodegaId      String
+  bodegaNombre  String
+  usuarioId     String
+  usuarioNombre String
+  tipo          String
+  motivo        String
+  lineas        Int
+  ajustes       Int
+  items         Json
+  fecha         DateTime          @default(now())
+  movimientos   MovimientoStock[]
+
+  @@index([bodegaId, fecha, id])
+  @@map("tomas_inventario")
 }
 
 // Cada producto tiene una fila de stock por bodega donde existe. Producto.stock es un
@@ -247,7 +287,10 @@ model Venta {
   turnoCajaId String?
   turnoCaja   TurnoCaja?        @relation(fields: [turnoCajaId], references: [id])
   devoluciones Devolucion[]
+  claveIdempotencia String?
+  huellaSolicitud   String?
 
+  @@unique([usuarioId, claveIdempotencia])
   @@index([clienteId])
   @@index([fecha])
   @@index([turnoCajaId])
@@ -278,8 +321,21 @@ model TipoTurno {
   @@map("tipos_turno")
 }
 
+model Caja {
+  id         String      @id @default(uuid())
+  nombre     String      @unique
+  fondoFijo  Decimal?    @db.Decimal(10, 2)
+  principal  Boolean     @default(false)
+  activa     Boolean     @default(true)
+  turnos     TurnoCaja[]
+
+  @@map("cajas")
+}
+
 model TurnoCaja {
   id                String    @id @default(uuid())
+  cajaId            String
+  caja              Caja      @relation(fields: [cajaId], references: [id])
   tipoTurnoId       String
   tipoTurno         TipoTurno @relation(fields: [tipoTurnoId], references: [id])
   estado            String    @default("abierto") // "abierto" | "cerrado"
@@ -299,6 +355,7 @@ model TurnoCaja {
   devoluciones      Devolucion[]
 
   @@index([estado])
+  @@index([cajaId, estado])
   @@map("turnos_caja")
 }
 
@@ -325,9 +382,12 @@ model VentaItem {
   ventaId         String
   venta           Venta            @relation(fields: [ventaId], references: [id], onDelete: Cascade)
   productoId      String
+  inventariable   Boolean          @default(true)
   producto        Producto         @relation(fields: [productoId], references: [id])
   cantidad        Int
   precioUnitario  Decimal          @db.Decimal(10, 2)
+  // Las ventas anteriores a la captura del costo conservan null.
+  costoUnitario   Decimal?         @db.Decimal(10, 2)
   descuento       Decimal          @db.Decimal(10, 2) @default(0)
   subtotal        Decimal          @db.Decimal(10, 2)
   devolucionItems DevolucionItem[]
@@ -418,6 +478,7 @@ model RegistroAuditoria {
   fecha             DateTime @default(now())
 
   @@index([usuarioId])
+  @@index([usuarioAfectadoId, accion, fecha])
   @@index([accion])
   @@index([fecha])
   @@map("registro_auditoria")

@@ -47,6 +47,7 @@ export interface ProductoMargen {
   cantidad: number;
   ingreso: number;
   costo: number;
+  costoEstimado: boolean;
   margen: number;
   margenPct: number;
 }
@@ -57,3 +58,30 @@ export interface ProductosMargenResponse {
 }
 
 export type ConsultaParams = { dias?: number; desde?: string; hasta?: string };
+
+export interface DetalleReporteResponse<T> {
+  filas: T[];
+  truncado: boolean;
+}
+
+interface FilaVenta {
+  id: string;
+  ventaId: string;
+  fecha: string;
+}
+
+export interface DetallePago extends FilaVenta {
+  operacion: "cobro" | "reembolso";
+  cliente: string | null;
+  metodoPago: string | null;
+  monto: number;
+}
+
+export interface DetalleProducto extends FilaVenta {
+  esCortesia: boolean;
+  producto: string;
+  sku: string;
+  cantidad: number;
+  cantidadDevuelta: number;
+  subtotal: number;
+}

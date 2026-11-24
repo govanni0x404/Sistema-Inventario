@@ -29,7 +29,7 @@ export default function RangoFechasSelector({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Select value={rango} onValueChange={(v) => setRango(v as RangoPreset)}>
-        <SelectTrigger className="w-44">
+        <SelectTrigger className="w-44 bg-card" aria-label="Período">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -42,9 +42,9 @@ export default function RangoFechasSelector({
       </Select>
       {rango === "custom" && (
         <>
-          <Input type="date" className="w-auto" value={desdeCustom} onChange={(e) => setDesdeCustom(e.target.value)} />
+          <Input type="date" aria-label="Desde" className="w-auto bg-card" value={desdeCustom} onChange={(e) => setDesdeCustom(e.target.value)} />
           <span className="font-body text-xs text-muted-foreground">a</span>
-          <Input type="date" className="w-auto" value={hastaCustom} onChange={(e) => setHastaCustom(e.target.value)} />
+          <Input type="date" aria-label="Hasta" className="w-auto bg-card" value={hastaCustom} onChange={(e) => setHastaCustom(e.target.value)} />
         </>
       )}
     </div>

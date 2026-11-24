@@ -16,20 +16,21 @@ export default function StatTile({
   tone?: "default" | "warning";
 }) {
   return (
-    <Card className="py-0">
-      <CardContent className="p-4 flex items-start gap-3">
+    <Card className="min-w-0 shadow-none">
+      <CardContent className="flex h-full flex-col justify-between gap-3 p-3.5 sm:p-4">
         <span
+          aria-hidden="true"
           className={cn(
-            "flex items-center justify-center w-9 h-9 rounded-lg shrink-0",
+            "grid size-8 shrink-0 place-items-center rounded-lg",
             tone === "warning" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
           )}
         >
           {icon}
         </span>
         <div className="min-w-0">
-          <div className="font-body text-xs text-muted-foreground truncate">{label}</div>
-          <div className="font-sans text-xl font-semibold text-foreground leading-tight mt-0.5">{value}</div>
-          {sublabel && <div className="font-body text-xs text-muted-foreground mt-0.5">{sublabel}</div>}
+          <p className="text-xs leading-snug font-medium text-muted-foreground">{label}</p>
+          <p className="mt-0.5 font-display text-[clamp(1rem,2vw,1.6rem)] leading-tight font-bold tracking-tight tabular-nums [overflow-wrap:anywhere]">{value}</p>
+          {sublabel && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{sublabel}</p>}
         </div>
       </CardContent>
     </Card>

@@ -1,142 +1,99 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useState } from "react";
 import type { PointerEvent } from "react";
-import { LOCALE, money } from "../../lib/format";
+import { fechaCompleta, fechaCorta } from "@/lib/fechas";
+import { LOCALE, money } from "@/lib/format";
 
 type Point = { fecha: string; total: number; cantidad: number };
-
-const W = 600;
-const H = 220;
-const PAD_L = 44;
-const PAD_R = 12;
-const PAD_T = 12;
-const PAD_B = 28;
-
+const W = 1_000;
+const H = 200;
+const axis = new Intl.NumberFormat(LOCALE, { notation: "compact", maximumFractionDigits: 1 });
 
 function niceMax(value: number) {
-  if (value <= 0) return 10;
   const magnitude = 10 ** Math.floor(Math.log10(value));
-  const residual = value / magnitude;
-  const step = residual > 5 ? 10 : residual > 2 ? 5 : residual > 1 ? 2 : 1;
-  return step * magnitude;
+  const factor = [1, 2, 2.5, 5, 10].find((step) => value <= step * magnitude) ?? 10;
+  return factor * magnitude;
 }
 
-export default function SalesLineChart({ data }: { data: Point[] }) {
-  const clipId = useId();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState<number | null>(null);
+export default function SalesLineChart({ data, metric }: { data: Point[]; metric: "total" | "cantidad" }) {
+  const gradientId = useId();
+  const rangeId = useId();
+  const [active, setActive] = useState(data.length - 1);
+  const point = data[active];
+  const peak = Math.max(4, ...data.map((p) => p[metric]));
+  const max = metric === "cantidad" ? Math.ceil(peak / 4) * 4 : niceMax(peak);
+  const xFor = (index: number) => data.length < 2 ? W / 2 : (index / (data.length - 1)) * W;
+  const yFor = (value: number) => H - (value / max) * H;
+  const values = data.map((p, i) => `${xFor(i)},${yFor(p[metric])}`).join(" ");
+  const area = `${xFor(0)},${H} ${values} ${xFor(data.length - 1)},${H}`;
 
-  const maxVal = useMemo(() => niceMax(Math.max(...data.map((d) => d.total), 1)), [data]);
-  const innerW = W - PAD_L - PAD_R;
-  const innerH = H - PAD_T - PAD_B;
-
-  const xFor = (i: number) => PAD_L + (data.length <= 1 ? 0 : (i / (data.length - 1)) * innerW);
-  const yFor = (v: number) => PAD_T + innerH - (v / maxVal) * innerH;
-
-  const linePath = data.map((d, i) => `${i === 0 ? "M" : "L"} ${xFor(i)} ${yFor(d.total)}`).join(" ");
-  const areaPath = `${linePath} L ${xFor(data.length - 1)} ${PAD_T + innerH} L ${xFor(0)} ${PAD_T + innerH} Z`;
-
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(maxVal * f));
-
-  const handlePointerMove = (e: PointerEvent<SVGSVGElement>) => {
-    if (!containerRef.current || data.length === 0) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const relX = ((e.clientX - rect.left) / rect.width) * W;
-    let nearest = 0;
-    let best = Infinity;
-    data.forEach((_, i) => {
-      const dist = Math.abs(xFor(i) - relX);
-      if (dist < best) {
-        best = dist;
-        nearest = i;
-      }
-    });
-    setActive(nearest);
+  const chooseDay = (event: PointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+    setActive(Math.round(percent * (data.length - 1)));
   };
 
-  const activePoint = active !== null ? data[active] : null;
-  const formatDia = (fecha: string) =>
-    new Date(`${fecha}T00:00:00`).toLocaleDateString(LOCALE, { day: "numeric", month: "short" });
+  if (data.length === 0 || !data.some((p) => p.total || p.cantidad)) {
+    return <p className="mt-5 rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">Aún no hay ventas en este período.</p>;
+  }
 
   return (
-    <div ref={containerRef} className="relative w-full" onPointerLeave={() => setActive(null)}>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-auto"
-        role="img"
-        aria-label="Ventas de los últimos días"
-        onPointerMove={handlePointerMove}
-      >
-        <defs>
-          <clipPath id={clipId}>
-            <rect x={PAD_L} y={PAD_T} width={innerW} height={innerH} />
-          </clipPath>
-        </defs>
-
-        {ticks.map((t) => (
-          <g key={t}>
-            <line x1={PAD_L} x2={W - PAD_R} y1={yFor(t)} y2={yFor(t)} stroke="var(--border)" strokeWidth={1} />
-            <text x={PAD_L - 8} y={yFor(t)} textAnchor="end" dominantBaseline="middle" className="fill-muted-foreground" fontSize={10}>
-              {t >= 1000 ? `${Math.round(t / 1000)}K` : t}
-            </text>
-          </g>
-        ))}
-
-        <path d={areaPath} fill="var(--primary)" opacity={0.1} clipPath={`url(#${clipId})`} />
-        <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-
-        {data.map((d, i) =>
-          i % Math.ceil(data.length / 7) === 0 ? (
-            <text key={d.fecha} x={xFor(i)} y={H - 8} textAnchor="middle" className="fill-muted-foreground" fontSize={10}>
-              {formatDia(d.fecha)}
-            </text>
-          ) : null
-        )}
-
-        {active !== null && (
-          <line x1={xFor(active)} x2={xFor(active)} y1={PAD_T} y2={PAD_T + innerH} stroke="var(--muted-foreground)" strokeWidth={1} strokeDasharray="2 2" />
-        )}
-
-        {data.map((d, i) => (
-          <circle
-            key={d.fecha}
-            cx={xFor(i)}
-            cy={yFor(d.total)}
-            r={active === i ? 4 : 0}
-            fill="var(--primary)"
-            stroke="var(--card)"
-            strokeWidth={2}
+    <div className="mt-4">
+      {point && (
+        <div className="mb-4 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-lg bg-muted/60 px-3 py-2 text-xs">
+          <time dateTime={point.fecha} className="mr-auto text-muted-foreground">{fechaCompleta(point.fecha)}</time>
+          <span className="font-display text-base font-semibold tabular-nums">{money(point.total)}</span>
+          <span className="text-muted-foreground">{point.cantidad} {point.cantidad === 1 ? "venta" : "ventas"}</span>
+        </div>
+      )}
+      <div aria-hidden="true" className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-stretch gap-x-2 px-0.5">
+        <div className="relative flex flex-col justify-between text-right font-mono text-[10px] leading-none text-muted-foreground">
+          {[1, 0.75, 0.5, 0.25, 0].map((fraction) => (
+            <span key={fraction} className="absolute right-0 -translate-y-1/2" style={{ top: `${(1 - fraction) * 100}%` }}>
+              {axis.format(max * fraction)}
+            </span>
+          ))}
+        </div>
+        <div className="relative h-38 touch-pan-y sm:h-44" onPointerDown={chooseDay} onPointerMove={chooseDay}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="size-full overflow-visible">
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop stopColor="var(--primary)" stopOpacity="0.22" />
+                <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {[0, 1, 2, 3, 4].map((tick) => (
+              <line key={tick} x1={0} x2={W} y1={H * tick / 4} y2={H * tick / 4} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
+            ))}
+            <polygon points={area} fill={`url(#${gradientId})`} />
+            <polyline points={values} fill="none" stroke="var(--primary)" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+            {point && (
+              <line x1={xFor(active)} x2={xFor(active)} y1={0} y2={H} stroke="var(--primary)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+            )}
+          </svg>
+          {point && (
+            <span className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-primary"
+              style={{ left: `${xFor(active) / W * 100}%`, top: `${yFor(point[metric]) / H * 100}%` }}
+            />
+          )}
+        </div>
+        <div className="col-start-2 mt-2 flex justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>{fechaCorta(data[0].fecha)}</span>
+          {data.length > 1 && <span>{fechaCorta(data[data.length - 1].fecha)}</span>}
+        </div>
+      </div>
+      {data.length > 1 && point && (
+        <div className="mt-3 flex items-center gap-3">
+          <label htmlFor={rangeId} className="text-xs text-muted-foreground">Explorar por día</label>
+          <input
+            id={rangeId}
+            type="range"
+            min={0}
+            max={data.length - 1}
+            value={active}
+            onChange={(event) => setActive(Number(event.target.value))}
+            aria-valuetext={`${fechaCompleta(point.fecha)}: ${money(point.total)}, ${point.cantidad} ventas`}
+            className="h-8 min-w-0 flex-1 accent-primary"
           />
-        ))}
-
-        {data.map((d, i) => (
-          <rect
-            key={`hit-${d.fecha}`}
-            x={xFor(i) - innerW / data.length / 2}
-            y={PAD_T}
-            width={innerW / data.length}
-            height={innerH}
-            fill="transparent"
-            tabIndex={0}
-            role="button"
-            aria-label={`${formatDia(d.fecha)}: ${money(d.total)}`}
-            onFocus={() => setActive(i)}
-            onBlur={() => setActive(null)}
-            className="outline-none focus-visible:fill-primary/5"
-          />
-        ))}
-      </svg>
-
-      {activePoint && (
-        <div
-          className="absolute top-2 pointer-events-none rounded-lg border border-border bg-popover px-3 py-2 shadow-md text-xs font-body"
-          style={{
-            left: `${(xFor(active!) / W) * 100}%`,
-            transform: active! > data.length / 2 ? "translateX(-105%)" : "translateX(5%)",
-          }}
-        >
-          <div className="text-muted-foreground">{formatDia(activePoint.fecha)}</div>
-          <div className="font-semibold text-foreground">{money(activePoint.total)}</div>
-          <div className="text-muted-foreground">{activePoint.cantidad} venta{activePoint.cantidad !== 1 ? "s" : ""}</div>
         </div>
       )}
     </div>

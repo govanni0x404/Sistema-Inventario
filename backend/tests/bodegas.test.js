@@ -89,6 +89,26 @@ describe("Bodegas", () => {
     expect(res.status).toBe(204);
   });
 
+  test("eliminar una bodega mientras recibe stock no pierde unidades", async () => {
+    const secundaria = await prisma.bodega.create({ data: { nombre: "Bodega Secundaria" } });
+    const auth = `Bearer ${admin.token}`;
+    const [entrada, baja] = await Promise.all([
+      request(app)
+        .post(`/api/productos/${producto.id}/movimientos`)
+        .set("Authorization", auth)
+        .send({ tipo: "entrada", cantidad: 2, bodegaId: secundaria.id }),
+      request(app).delete(`/api/bodegas/${secundaria.id}`).set("Authorization", auth),
+    ]);
+
+    expect([[201, 409], [404, 204]]).toContainEqual([entrada.status, baja.status]);
+    const [productoFinal, stockBodegas] = await Promise.all([
+      prisma.producto.findUnique({ where: { id: producto.id } }),
+      prisma.stockBodega.aggregate({ where: { productoId: producto.id }, _sum: { cantidad: true } }),
+    ]);
+    expect(productoFinal.stock).toBe(entrada.status === 201 ? 12 : 10);
+    expect(stockBodegas._sum.cantidad).toBe(productoFinal.stock);
+  });
+
   test("transferencia mueve stock entre bodegas y deja 2 movimientos de auditoría", async () => {
     const secundaria = await prisma.bodega.create({ data: { nombre: "Bodega Secundaria" } });
     await prisma.stockBodega.create({ data: { bodegaId: secundaria.id, productoId: producto.id, cantidad: 0 } });
@@ -129,6 +149,59 @@ describe("Bodegas", () => {
       .send({ origenBodegaId: principal.id, destinoBodegaId: secundaria.id, productoId: producto.id, cantidad: 999 });
 
     expect(res.status).toBe(409);
+  });
+
+  test("dos transferencias simultáneas no pueden usar las mismas unidades", async () => {
+    const secundaria = await prisma.bodega.create({ data: { nombre: "Bodega Secundaria" } });
+    const transferir = () => request(app)
+      .post("/api/bodegas/transferencias")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ origenBodegaId: principal.id, destinoBodegaId: secundaria.id, productoId: producto.id, cantidad: 6 });
+
+    const respuestas = await Promise.all([transferir(), transferir()]);
+    expect(respuestas.map((res) => res.status).sort()).toEqual([201, 409]);
+    const stocks = await prisma.stockBodega.findMany({ where: { productoId: producto.id } });
+    expect(stocks.find((stock) => stock.bodegaId === principal.id).cantidad).toBe(4);
+    expect(stocks.find((stock) => stock.bodegaId === secundaria.id).cantidad).toBe(6);
+    expect(await prisma.movimientoStock.count({ where: { productoId: producto.id } })).toBe(2);
+  });
+
+  test("Caja consulta el stock de la bodega principal en el catálogo y en los carritos en espera", async () => {
+    const secundaria = await prisma.bodega.create({ data: { nombre: "Bodega Secundaria" } });
+    const auth = `Bearer ${admin.token}`;
+    const transferencia = await request(app)
+      .post("/api/bodegas/transferencias")
+      .set("Authorization", auth)
+      .send({ origenBodegaId: principal.id, destinoBodegaId: secundaria.id, productoId: producto.id, cantidad: 6 });
+    expect(transferencia.status).toBe(201);
+
+    const catalogo = await request(app).get("/api/productos").set("Authorization", auth);
+    expect(catalogo.body).toEqual([expect.objectContaining({ id: producto.id, stock: 10, stockCaja: 4 })]);
+
+    const detalle = await request(app).get(`/api/productos/${producto.id}`).set("Authorization", auth);
+    expect(detalle.body).toMatchObject({ stock: 10, stockCaja: 4 });
+
+    const enEspera = await request(app)
+      .post("/api/ventas-en-espera")
+      .set("Authorization", auth)
+      .send({ items: [{ productoId: producto.id, cantidad: 3 }] });
+    expect(enEspera.status).toBe(201);
+    expect(enEspera.body.items[0].producto).toMatchObject({ stock: 10, stockCaja: 4, activo: true });
+  });
+
+  test("una bodega inactiva puede vaciarse mediante transferencia pero no recibir stock", async () => {
+    const secundaria = await prisma.bodega.create({ data: { nombre: "Bodega Secundaria" } });
+    const transferir = (origenBodegaId, destinoBodegaId) => request(app)
+      .post("/api/bodegas/transferencias")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ origenBodegaId, destinoBodegaId, productoId: producto.id, cantidad: 1 });
+
+    expect((await transferir(principal.id, secundaria.id)).status).toBe(201);
+    await prisma.bodega.update({ where: { id: secundaria.id }, data: { activo: false } });
+    expect((await transferir(principal.id, secundaria.id)).status).toBe(409);
+    expect((await transferir(secundaria.id, principal.id)).status).toBe(201);
+    const final = await prisma.stockBodega.findUnique({ where: { bodegaId_productoId: { bodegaId: principal.id, productoId: producto.id } } });
+    expect(final.cantidad).toBe(10);
   });
 
   test("rechaza la transferencia si origen y destino son la misma bodega", async () => {
