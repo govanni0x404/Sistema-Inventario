@@ -13,7 +13,7 @@ export interface StockBodegaItem {
   bodegaId: string;
   productoId: string;
   cantidad: number;
-  producto: { id: string; nombre: string; sku: string; unidad: { nombre: string } };
+  producto: { id: string; nombre: string; codigoBarras: string | null; unidad: { nombre: string } };
 }
 
 export type TransferenciaInput = {
@@ -57,5 +57,5 @@ export interface ResumenTomaInventario {
 }
 
 export interface TomaInventario extends ResumenTomaInventario {
-  items: (CantidadContada & { nombre: string; sku: string; unidad: string; diferencia: number })[];
+  items: (CantidadContada & { nombre: string; codigoBarras: string | null; unidad: string; diferencia: number })[];
 }

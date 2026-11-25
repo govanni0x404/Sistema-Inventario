@@ -11,7 +11,7 @@ const proveedorSchema = z.object({
 
 const proveedorUpdateSchema = proveedorSchema.partial();
 
-function serializeProducto(p) {
+function serializeProducto({ sku, ...p }) {
   return { ...p, precioCompra: Number(p.precioCompra), precioVenta: Number(p.precioVenta) };
 }
 

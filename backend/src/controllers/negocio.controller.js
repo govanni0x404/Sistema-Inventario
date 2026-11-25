@@ -3,7 +3,11 @@ const prisma = require("../lib/prisma");
 const { rutValido, formatearRut } = require("../lib/rut");
 
 const NEGOCIO_ID = 1;
-const POR_DEFECTO = { nombre: "Mi Negocio", rut: null, giro: null, direccion: null, telefono: null, email: null, mensajeTicket: null };
+const DOCUMENTOS_VENTA = ["interno"];
+const POR_DEFECTO = {
+  nombre: "Mi Negocio", rut: null, giro: null, direccion: null, telefono: null, email: null, mensajeTicket: null,
+  venderSinStock: false, agruparProductosCaja: true, documentoVentaDefecto: "interno", descuentoMaximoCaja: 100,
+};
 
 // Texto vacío → null (campo opcional sin valor).
 const opcional = (max) =>
@@ -29,6 +33,10 @@ const negocioSchema = z.object({
     z.string().trim().email("Correo inválido").nullable().optional()
   ),
   mensajeTicket: opcional(200),
+  venderSinStock: z.boolean().optional(),
+  agruparProductosCaja: z.boolean().optional(),
+  documentoVentaDefecto: z.enum(DOCUMENTOS_VENTA).optional(),
+  descuentoMaximoCaja: z.number().int().min(0).max(100).optional(),
 });
 
 function serialize(n) {
@@ -64,4 +72,4 @@ async function actualizar(req, res) {
   res.json(await guardarNegocio(prisma, parsed.data));
 }
 
-module.exports = { obtener, actualizar, negocioSchema, obtenerNegocio, guardarNegocio };
+module.exports = { obtener, actualizar, negocioSchema, obtenerNegocio, guardarNegocio, DOCUMENTOS_VENTA };

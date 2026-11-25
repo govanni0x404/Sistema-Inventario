@@ -48,7 +48,7 @@ export default function PrecioForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="p-3 rounded-lg bg-muted font-body text-xs text-muted-foreground">
-        <span className="text-foreground font-medium">{producto.nombre}</span> <span className="font-mono">{producto.sku}</span>
+        <span className="text-foreground font-medium">{producto.nombre}</span> <span className="font-mono">{producto.codigoBarras}</span>
       </div>
 
       <Field label="Precio de compra" error={err("precioCompra")}>

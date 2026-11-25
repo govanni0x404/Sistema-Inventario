@@ -23,7 +23,7 @@ describe("Ficha de producto", () => {
 
     const datos = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jXioAAAAASUVORK5CYII=";
     const ficha = {
-      sku: "FICHA-1", codigoBarras: primero.codigoBarras, nombre: "Producto de prueba", unidadId: unidad.id,
+      codigoBarras: primero.codigoBarras, nombre: "Producto de prueba", unidadId: unidad.id,
       categoriaId: categoria.id, subfamilia: "Agua", tipoImpuesto: "exento", precioVenta: 100,
       inventariable: false, ventaPublico: false, mostrarPrecio: false, ventaVolumen: true, esPack: true,
     };
@@ -32,6 +32,7 @@ describe("Ficha de producto", () => {
       .send({ ...ficha, imagenArchivo: `data:image/png;base64,${datos}` }).expect(201);
     expect(producto).toMatchObject(ficha);
     expect(producto).not.toHaveProperty("foto");
+    expect(producto).not.toHaveProperty("sku");
     await request(app).get(producto.imagenUrl).expect(401);
     const respuesta = await request(app).get(producto.imagenUrl).set(auth).expect("Content-Type", /image\/png/).expect(200);
     expect(respuesta.body).toEqual(Buffer.from(datos, "base64"));
@@ -43,6 +44,15 @@ describe("Ficha de producto", () => {
       .send({ imagenUrl: "https://example.com/foto.png" }).expect(200);
     expect(enLinea.imagenUrl).toBe("https://example.com/foto.png");
     await request(app).get(producto.imagenUrl).set(auth).expect(404);
+  });
+
+  test("asigna un código de barras al crear un producto sin ingresar uno", async () => {
+    const { token } = await crearUsuario({ rol: "admin" });
+    const unidad = await prisma.unidad.create({ data: { nombre: "Unidad" } });
+    const { body } = await request(app).post("/api/productos").set("Authorization", `Bearer ${token}`)
+      .send({ nombre: "Producto sin código", unidadId: unidad.id, precioVenta: 100 }).expect(201);
+    expect(body.codigoBarras).toMatch(/^20\d{11}$/);
+    expect(body).not.toHaveProperty("sku");
   });
 });
 
@@ -115,13 +125,13 @@ describe("Productos: importar", () => {
     await prisma.$disconnect();
   });
 
-  test("actualizar por SKU no pisa con 0 los campos que vienen vacíos o no vienen", async () => {
+  test("actualizar por código de barras conserva los campos vacíos y el stock", async () => {
     const producto = await crearProducto({ precioCompra: 12, precioVenta: 20, stockMinimo: 7, codigoBarras: "7801234" });
 
     const res = await request(app)
       .post("/api/productos/importar")
       .set("Authorization", `Bearer ${admin.token}`)
-      .send({ productos: [{ sku: producto.sku, nombre: "Nuevo nombre", precioVenta: 25, precioCompra: "", codigoBarras: "" }] });
+      .send({ productos: [{ codigoBarras: producto.codigoBarras, nombre: "Nuevo nombre", precioVenta: 25, precioCompra: "", stock: 1 }] });
 
     expect(res.status).toBe(200);
     expect(res.body.resumen.actualizados).toBe(1);
@@ -131,15 +141,16 @@ describe("Productos: importar", () => {
     expect(Number(actual.precioCompra)).toBe(12);
     expect(actual.stockMinimo).toBe(7);
     expect(actual.codigoBarras).toBe("7801234");
+    expect(actual.stock).toBe(producto.stock);
   });
 
   test("un cambio de precio por importación queda en el historial de precios", async () => {
-    const producto = await crearProducto({ precioCompra: 12, precioVenta: 20 });
+    const producto = await crearProducto({ precioCompra: 12, precioVenta: 20, codigoBarras: "7809876" });
 
     await request(app)
       .post("/api/productos/importar")
       .set("Authorization", `Bearer ${admin.token}`)
-      .send({ productos: [{ sku: producto.sku, nombre: producto.nombre, precioVenta: 30 }] });
+      .send({ productos: [{ codigoBarras: producto.codigoBarras, nombre: producto.nombre, precioVenta: 30 }] });
 
     const historial = await prisma.historialPrecio.findMany({ where: { productoId: producto.id } });
     expect(historial).toHaveLength(1);
@@ -152,10 +163,10 @@ describe("Productos: importar", () => {
     const res = await request(app)
       .post("/api/productos/importar")
       .set("Authorization", `Bearer ${admin.token}`)
-      .send({ productos: [{ sku: "NUEVO-1", nombre: "Nuevo", precioVenta: 10, stock: 4 }] });
+      .send({ productos: [{ codigoBarras: "7803333", nombre: "Nuevo", precioVenta: 10, stock: 4 }] });
 
     expect(res.body.resumen.creados).toBe(1);
-    const creado = await prisma.producto.findUnique({ where: { sku: "NUEVO-1" }, include: { stockBodegas: true } });
+    const creado = await prisma.producto.findUnique({ where: { codigoBarras: "7803333" }, include: { stockBodegas: true } });
     expect(Number(creado.precioCompra)).toBe(0);
     expect(creado.stockMinimo).toBe(0);
     expect(creado.stock).toBe(4);

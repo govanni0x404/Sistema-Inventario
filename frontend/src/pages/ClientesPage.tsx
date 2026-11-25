@@ -3,26 +3,18 @@ import { toast } from "sonner";
 import { Search, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { clientesApi } from "../api/clientes";
 import { ApiError } from "../api/client";
-import type { Cliente, ClienteConVentas, ClienteInput } from "../types/cliente";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { Cliente, ClienteConVentas } from "../types/cliente";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDialog from "../components/ConfirmDialog";
-import EntityForm, { type FieldDef } from "../components/EntityForm";
+import ClienteDialog from "../components/ClienteDialog";
 import DataPagination from "../components/DataPagination";
 import { usePagedList } from "../hooks/usePagedList";
 import { cn } from "@/lib/utils";
 import { LOCALE, money } from "../lib/format";
 
-
-const fields: FieldDef[] = [
-  { key: "nombre", label: "Nombre" },
-  { key: "telefono", label: "Teléfono" },
-  { key: "email", label: "Correo", type: "email" },
-  { key: "direccion", label: "Dirección" },
-];
 
 type ModalState = { mode: "new" } | { mode: "edit"; data: Cliente } | null;
 
@@ -32,8 +24,6 @@ export default function ClientesPage() {
   const [q, setQ] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
   const [deleteTarget, setDeleteTarget] = useState<Cliente | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]> | undefined>();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<ClienteConVentas | null>(null);
   const [detalleCargando, setDetalleCargando] = useState(false);
@@ -77,39 +67,6 @@ export default function ClientesPage() {
     }
   };
 
-  const save = async (data: Record<string, string>) => {
-    if (!modal) return;
-    setSaving(true);
-    setFieldErrors(undefined);
-    const input: ClienteInput = {
-      nombre: data.nombre.trim(),
-      telefono: data.telefono?.trim() || undefined,
-      email: data.email?.trim() || undefined,
-      direccion: data.direccion?.trim() || undefined,
-    };
-    try {
-      if (modal.mode === "new") {
-        const creado = await clientesApi.crear(input);
-        setClientes((prev) => (prev ? [...prev, creado] : [creado]));
-        toast.success("Cliente creado");
-      } else {
-        const actualizado = await clientesApi.actualizar(modal.data.id, input);
-        setClientes((prev) => prev?.map((c) => (c.id === actualizado.id ? actualizado : c)) ?? null);
-        toast.success("Cliente actualizado");
-      }
-      setModal(null);
-    } catch (e) {
-      if (e instanceof ApiError) {
-        setFieldErrors((e.detalles as { fieldErrors?: Record<string, string[]> })?.fieldErrors);
-        toast.error(e.message);
-      } else {
-        toast.error("Error al guardar el cliente");
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     try {
@@ -132,7 +89,6 @@ export default function ClientesPage() {
         </div>
         <Button
           onClick={() => {
-            setFieldErrors(undefined);
             setModal({ mode: "new" });
           }}
         >
@@ -189,7 +145,6 @@ export default function ClientesPage() {
                           size="icon"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setFieldErrors(undefined);
                             setModal({ mode: "edit", data: c });
                           }}
                           aria-label="Editar"
@@ -243,23 +198,12 @@ export default function ClientesPage() {
 
       <DataPagination page={page} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
 
-      <Dialog open={!!modal} onOpenChange={(o) => !o && setModal(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{modal?.mode === "new" ? "Nuevo cliente" : "Editar cliente"}</DialogTitle>
-          </DialogHeader>
-          {modal && (
-            <EntityForm
-              fields={fields}
-              initial={modal.mode === "edit" ? (modal.data as unknown as Record<string, unknown>) : undefined}
-              fieldErrors={fieldErrors}
-              onCancel={() => setModal(null)}
-              onSave={save}
-              saving={saving}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {modal && <ClienteDialog cliente={modal.mode === "edit" ? modal.data : undefined} cerrar={() => setModal(null)} guardado={(cliente) => {
+        setClientes((actual) => modal.mode === "edit"
+          ? actual?.map((item) => item.id === cliente.id ? cliente : item) ?? null
+          : [...(actual ?? []), cliente]);
+        setModal(null);
+      }} />}
 
       <ConfirmDialog
         open={!!deleteTarget}

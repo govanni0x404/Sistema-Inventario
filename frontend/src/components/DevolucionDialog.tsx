@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { MetodoPago, Venta } from "../types/venta";
+import { ETIQUETAS_PAGO, type MetodoPago, type Venta } from "../types/venta";
 import { ventasApi } from "../api/ventas";
 import { cajasApi } from "../api/cajas";
 import type { Caja } from "@/types/turno";
@@ -13,8 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { aCentavos, money } from "../lib/format";
 import { printNotaCredito } from "../lib/printTicket";
 import { useNegocio } from "../context/NegocioContext";
-
-const METODO_LABEL: Record<MetodoPago, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta", transferencia: "Transferencia" };
 
 function pagadoEnCentavos(venta: Venta, it: Venta["items"][number]) {
   if (venta.esCortesia) return 0;
@@ -188,7 +186,7 @@ export default function DevolucionDialog({
                   <SelectContent>
                     {venta.pagos.map((p) => (
                       <SelectItem key={p.metodoPago} value={p.metodoPago}>
-                        {METODO_LABEL[p.metodoPago]}
+                        {ETIQUETAS_PAGO[p.metodoPago]}
                       </SelectItem>
                     ))}
                   </SelectContent>

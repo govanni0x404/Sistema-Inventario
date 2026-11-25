@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { consultasApi } from "../api/consultas";
+import { ETIQUETAS_PAGO } from "../types/venta";
 import { ApiError } from "../api/client";
 import type { ConsultaParams, DetallePago, DetalleProducto, DetalleReporteResponse } from "../types/consulta";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -85,7 +86,7 @@ function ProductosTopReport() {
     if (!productos || productos.length === 0) return;
     exportarCsv(
       `productos-mas-vendidos-${hoyStr()}.csv`,
-      productos.map((p) => ({ Producto: p.nombre, SKU: p.sku, Unidades: p.cantidad, "Monto vendido": p.subtotal }))
+      productos.map((p) => ({ Producto: p.nombre, "Código de barras": p.codigoBarras ?? "", Unidades: p.cantidad, "Monto vendido": p.subtotal }))
     );
   };
 
@@ -116,7 +117,7 @@ function ProductosTopReport() {
                 <TableRow key={p.productoId}>
                   <TableCell>
                     <div className="font-body text-sm font-medium text-foreground">{p.nombre}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{p.sku}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{p.codigoBarras}</div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-sm text-foreground">{p.cantidad}</TableCell>
                   <TableCell className="text-right font-mono text-sm font-semibold text-primary">{money(p.subtotal)}</TableCell>
@@ -254,7 +255,7 @@ const columnasPagos: ColumnaDetalle<DetallePago>[] = [
 
 const columnasProductos: ColumnaDetalle<DetalleProducto>[] = [
   { titulo: "Producto", valor: (p) => p.producto },
-  { titulo: "SKU", valor: (p) => p.sku },
+  { titulo: "Código de barras", valor: (p) => p.codigoBarras ?? "—" },
   { titulo: "Tipo de venta", valor: (p) => p.esCortesia ? "Cortesía" : "Cobrada" },
   { titulo: "Unidades", valor: (p) => p.cantidad, numerica: true },
   { titulo: "Devueltas", valor: (p) => p.cantidadDevuelta, numerica: true },
@@ -299,9 +300,7 @@ function DetalleReporte<T extends FilaDetalle>({
             <SelectTrigger aria-label="Forma de pago" className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todas las formas</SelectItem>
-              <SelectItem value="efectivo">Efectivo</SelectItem>
-              <SelectItem value="tarjeta">Tarjeta</SelectItem>
-              <SelectItem value="transferencia">Transferencia</SelectItem>
+              {Object.entries(ETIQUETAS_PAGO).map(([metodo, etiqueta]) => <SelectItem key={metodo} value={metodo}>{etiqueta}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
@@ -315,7 +314,7 @@ function DetalleReporte<T extends FilaDetalle>({
       }}>
         <Input aria-label="Folio del comprobante" className="w-44" placeholder="Folio" maxLength={36} value={folioTexto} onChange={(e) => setFolioTexto(e.target.value)} />
         {tipo === "productos" && (
-          <Input aria-label="Nombre, SKU o código de barras" className="max-w-64" placeholder="Producto, SKU o código de barras" maxLength={150} value={productoTexto} onChange={(e) => setProductoTexto(e.target.value)} />
+          <Input aria-label="Nombre o código de barras" className="max-w-64" placeholder="Producto o código de barras" maxLength={150} value={productoTexto} onChange={(e) => setProductoTexto(e.target.value)} />
         )}
         <Button type="submit" variant="outline"><Search size={14} /> Buscar</Button>
       </form>
@@ -368,7 +367,7 @@ function ProductosMargenReport() {
       `margen-por-producto-${hoyStr()}.csv`,
       productos.map((p) => ({
         Producto: p.nombre,
-        SKU: p.sku,
+        "Código de barras": p.codigoBarras ?? "",
         Unidades: p.cantidad,
         Ingreso: p.ingreso,
         Costo: p.costo,
@@ -422,7 +421,7 @@ function ProductosMargenReport() {
                   <TableRow key={p.productoId}>
                     <TableCell>
                       <div className="font-body text-sm font-medium text-foreground">{p.nombre}</div>
-                      <div className="font-mono text-xs text-muted-foreground">{p.sku}</div>
+                      <div className="font-mono text-xs text-muted-foreground">{p.codigoBarras}</div>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm text-foreground">{p.cantidad}</TableCell>
                     <TableCell className="text-right font-mono text-sm text-foreground">{money(p.ingreso)}</TableCell>

@@ -1,4 +1,7 @@
-export type MetodoPago = "efectivo" | "tarjeta" | "transferencia";
+import type { DocumentoVenta } from "./negocio";
+
+export const ETIQUETAS_PAGO = { efectivo: "Efectivo", tarjeta: "Tarjeta", debito: "Débito", credito: "Crédito", transferencia: "Transferencia" } as const;
+export type MetodoPago = keyof typeof ETIQUETAS_PAGO;
 
 export interface VentaPago {
   id: string;
@@ -14,7 +17,7 @@ export interface VentaItem {
   descuento: number;
   subtotal: number;
   importeCobrado?: number;
-  producto?: { id: string; nombre: string; sku: string };
+  producto?: { id: string; nombre: string; codigoBarras: string | null };
 }
 
 export interface DevolucionItem {
@@ -44,6 +47,7 @@ export interface Venta {
   subtotal: number;
   descuento: number;
   total: number;
+  tipoDocumento: DocumentoVenta;
   esCortesia: boolean;
   motivoCortesia: string | null;
   pagos: VentaPago[];
@@ -58,6 +62,7 @@ export type VentaInput = {
   claveIdempotencia?: string;
   clienteId?: string | null;
   listaPrecioId?: string | null;
+  tipoDocumento?: DocumentoVenta;
   pagos?: { metodoPago: MetodoPago; monto: number }[];
   esCortesia?: boolean;
   motivoCortesia?: string | null;

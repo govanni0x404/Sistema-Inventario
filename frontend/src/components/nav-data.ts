@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, ShoppingCart, Clock, Package, Boxes, ArrowLeftRight, Tag, Users, Truck, Receipt,
-  ShieldCheck, Users2, Tags, IdCard, ListTree, LineChart, Warehouse, History, Store, Ruler, Settings2, Wrench, ClipboardCheck, Banknote,
+  ShieldCheck, Users2, Tags, IdCard, ListTree, LineChart, Warehouse, History, Ruler, Settings2, Wrench, ClipboardCheck, Banknote,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Seccion, Usuario } from "@/types/auth";
@@ -51,13 +51,13 @@ export const navGroups = [
       { to: "/categorias", adminOnly: true, label: "Categorías", icon: Tags },
       { to: "/unidades", adminOnly: true, label: "Unidades", icon: Ruler },
       { to: "/turnos", seccion: "turnos", label: "Turnos", icon: Clock },
-      { to: "/negocio", adminOnly: true, label: "Datos del negocio", icon: Store },
     ],
   },
   {
     label: "Herramientas",
     icon: Wrench,
     items: [
+      { to: "/negocio", adminOnly: true, label: "Configuración", icon: Settings2 },
       { to: "/control-cajas", adminOnly: true, label: "Control de cajas", icon: Banknote },
       { to: "/permisos", adminOnly: true, label: "Permisos", icon: ShieldCheck },
       { to: "/roles", adminOnly: true, label: "Roles", icon: IdCard },

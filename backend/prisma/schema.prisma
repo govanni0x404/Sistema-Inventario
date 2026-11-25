@@ -277,6 +277,7 @@ model Venta {
   subtotal    Decimal           @db.Decimal(10, 2) @default(0)
   descuento   Decimal           @db.Decimal(10, 2) @default(0)
   total       Decimal           @db.Decimal(10, 2)
+  tipoDocumento String          @default("interno")
   esCortesia    Boolean         @default(false)
   motivoCortesia String?
   pagos       VentaPago[]
@@ -493,6 +494,7 @@ model VentaEnEspera {
   clienteId  String?
   cliente    Cliente?            @relation(fields: [clienteId], references: [id])
   descuento  Decimal             @db.Decimal(10, 2) @default(0)
+  tipoDocumento String           @default("interno")
   usuarioId  String?
   usuario    Usuario?            @relation(fields: [usuarioId], references: [id])
   creadoEn   DateTime            @default(now())
@@ -525,6 +527,10 @@ model Negocio {
   telefono      String?
   email         String?
   mensajeTicket String?
+  venderSinStock Boolean @default(false)
+  agruparProductosCaja Boolean @default(true)
+  documentoVentaDefecto String @default("interno")
+  descuentoMaximoCaja Int @default(100)
   actualizadoEn DateTime @updatedAt
 
   @@map("negocio")

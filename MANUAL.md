@@ -1,4 +1,4 @@
-# Manual de uso — Caja e Inventario
+# Manual de uso de Kardexia
 
 Guía rápida para el dueño del negocio y los cajeros.
 
@@ -14,19 +14,19 @@ En los siguientes accesos usa tu correo y tu clave. Si olvidas la clave, pulsa *
 
 Luego, en este orden:
 
-1. **Mantención → Datos del negocio**: revisa los datos y el mensaje al pie del comprobante (ej. horario o política de cambios).
+1. **Herramientas → Configuración**: revisa los datos del negocio, el mensaje del comprobante y las opciones de Caja.
 2. **Herramientas → Usuarios**: crea una cuenta para cada cajero (rol **cajero**).
-3. **Mantención → Productos**: agrega tus productos uno por uno o impórtalos desde un archivo CSV con el botón *Importar*. Si el catálogo está en Excel, guárdalo primero como CSV.
+3. **Mantención → Productos**: agrega productos con **Nuevo producto** y haz clic en cualquier fila para editarla.
 
 ---
 
 ## 2. Vender (Caja)
 
 1. Entra a **Caja**. Verás la empresa y la fecha local del equipo. Elige una caja y un tipo de turno, ingresa el **fondo fijo de apertura** y pulsa **Abrir caja**. Escribe **0** si abres sin efectivo. Si esa caja ya está abierta, puedes continuar su turno.
-2. Busca el producto por nombre o código, o **escanéalo con el lector de código de barras**.
-3. Ajusta cantidades con **+ / −**. Puedes poner un descuento por producto o al total.
-4. Elige la **forma de pago**: efectivo, tarjeta o transferencia. Con **Dividir pago** puedes cobrar con dos formas (ej. parte efectivo, parte tarjeta).
-5. Si pagan en efectivo, escribe cuánto te entregaron en **Recibe** y el sistema calcula el **vuelto**.
+2. Busca el producto por nombre o código. Usa **↑ / ↓** y **Enter** para elegir un resultado, o escanea el código.
+3. Ajusta cantidades con **+ / −** y aplica descuentos por monto o porcentaje según el máximo configurado. Puedes cambiar el cliente y el documento antes de cobrar.
+4. Elige una forma de pago, indica el monto y pulsa **Agregar al pago**. Repite hasta cubrir el saldo. Para una **Cortesía**, selecciona ese medio e indica el motivo.
+5. Si pagan en efectivo, indica el **Efectivo recibido** o pulsa **Pago exacto**. La pantalla muestra el **vuelto**.
 6. Presiona **Cobrar**. La confirmación muestra el folio interno, las formas de pago y el vuelto si corresponde. Pulsa **Imprimir comprobante** o **Nueva venta**.
 
 > El comprobante del sistema es un documento de uso interno.
@@ -80,7 +80,7 @@ Puedes ver todos los turnos cerrados en **Mantención → Turnos**.
 - **Consultas → Reportes**: productos más vendidos, ventas por forma de pago, ventas por cajero y **margen por producto**. Todos se pueden **descargar en CSV** (se abre con Excel).
 - **Detalle de venta**: busca el folio de un comprobante para revisar la venta, sus pagos y sus devoluciones.
 - **Detalle de pagos**: filtra por período, folio o medio de pago. Los cobros aparecen como montos positivos y los reembolsos como montos negativos, en la fecha de cada operación.
-- **Detalle de productos**: busca por producto, SKU o código de barras para revisar cantidades vendidas y devueltas por comprobante. Los detalles de pagos y productos se pueden descargar en CSV. Si el filtro supera las 1.000 filas, reduce el período para obtener una exportación completa.
+- **Detalle de productos**: busca por nombre o código de barras para revisar cantidades vendidas y devueltas por comprobante. Los detalles de pagos y productos se pueden descargar en CSV. Si el filtro supera las 1.000 filas, reduce el período para obtener una exportación completa.
 - **Margen por producto**: toma el importe cobrado con descuentos y antes de devoluciones. Usa el costo registrado al vender. Para los tickets antiguos sin ese dato, el sistema indica cuándo usa el costo actual como estimación.
 
 ---

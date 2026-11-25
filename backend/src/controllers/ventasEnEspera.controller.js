@@ -2,6 +2,7 @@ const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { stockCajaInclude, conStockCaja } = require("../lib/stockBodega");
+const { DOCUMENTOS_VENTA, obtenerNegocio } = require("./negocio.controller");
 
 const INCLUDE = {
   cliente: { select: { id: true, nombre: true } },
@@ -9,7 +10,7 @@ const INCLUDE = {
   items: {
     include: {
       producto: {
-        select: { id: true, nombre: true, sku: true, precioVenta: true, stock: true, activo: true, ventaPublico: true, inventariable: true, stockBodegas: stockCajaInclude },
+        select: { id: true, nombre: true, codigoBarras: true, precioVenta: true, stock: true, activo: true, ventaPublico: true, inventariable: true, stockBodegas: stockCajaInclude },
       },
     },
   },
@@ -31,6 +32,7 @@ const crearSchema = z.object({
   referencia: z.string().trim().optional().nullable(),
   clienteId: z.string().uuid().optional().nullable(),
   descuento: z.coerce.number().min(0).optional().default(0),
+  tipoDocumento: z.enum(DOCUMENTOS_VENTA).optional(),
   items: z
     .array(
       z.object({
@@ -54,13 +56,14 @@ async function crear(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { referencia, clienteId, descuento, items } = parsed.data;
+  const { referencia, clienteId, descuento, items, tipoDocumento } = parsed.data;
 
   const creada = await prisma.ventaEnEspera.create({
     data: {
       referencia: referencia || null,
       clienteId: clienteId || null,
       descuento,
+      tipoDocumento: tipoDocumento ?? (await obtenerNegocio()).documentoVentaDefecto,
       usuarioId: req.user?.id,
       items: { create: items },
     },

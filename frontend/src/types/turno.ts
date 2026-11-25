@@ -1,3 +1,5 @@
+import type { MetodoPago } from "./venta";
+
 export type EstadoTurno = "abierto" | "cerrado";
 
 export interface Caja {
@@ -17,9 +19,9 @@ export interface TipoTurno {
 }
 
 export interface ResumenVentasTurno {
-  porMetodo: { efectivo: number; tarjeta: number; transferencia: number };
+  porMetodo: Partial<Record<MetodoPago, number>>;
   // Reembolsos hechos durante el turno; el de efectivo se resta del esperado en caja.
-  devolucionesPorMetodo?: { efectivo: number; tarjeta: number; transferencia: number };
+  devolucionesPorMetodo?: Partial<Record<MetodoPago, number>>;
   cantidadVentas: number;
   total: number;
 }

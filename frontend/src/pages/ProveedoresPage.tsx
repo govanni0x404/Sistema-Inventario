@@ -224,7 +224,7 @@ export default function ProveedoresPage() {
                             {detalle.productos.map((prod) => (
                               <div key={prod.id} className="flex justify-between font-mono text-xs text-muted-foreground">
                                 <span>
-                                  {prod.nombre} <span className="opacity-60">({prod.sku})</span>
+                                  {prod.nombre} {prod.codigoBarras && <span className="opacity-60">({prod.codigoBarras})</span>}
                                 </span>
                                 <span className="text-primary font-semibold">{money(prod.precioVenta)}</span>
                               </div>

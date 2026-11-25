@@ -20,13 +20,13 @@ async function bodegaPrincipal(tx) {
 
 // Cada operación bloquea primero el producto. El bloqueo compartido de la bodega
 // evita que se la desactive o elimine hasta que termine el ajuste.
-async function ajustarStockBodega(tx, bodegaId, productoId, delta) {
+async function ajustarStockBodega(tx, bodegaId, productoId, delta, permitirNegativo = false) {
   const [bodega] = await tx.$queryRaw`
     SELECT "activo" FROM "bodegas" WHERE "id" = ${bodegaId} FOR SHARE
   `;
   if (!bodega) throw new HttpError(404, "Bodega no encontrada");
 
-  if (delta < 0) {
+  if (delta < 0 && !permitirNegativo) {
     const [stock] = await tx.$queryRaw`
       UPDATE "stock_bodega"
       SET "cantidad" = "cantidad" + ${delta}

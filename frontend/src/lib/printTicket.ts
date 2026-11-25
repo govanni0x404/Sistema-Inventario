@@ -1,14 +1,12 @@
-import type { Devolucion, Venta } from "../types/venta";
-import type { Negocio } from "../types/negocio";
-import { LOCALE, money } from "./format";
+import { ETIQUETAS_PAGO, type Devolucion, type Venta } from "../types/venta";
+import { DOCUMENTOS_VENTA, type Negocio } from "../types/negocio";
+import { LOCALE, moneyCaja as money } from "./format";
 
 function escapeHtml(value: string) {
   const div = document.createElement("div");
   div.textContent = value;
   return div.innerHTML;
 }
-
-const METODO_LABEL: Record<string, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta", transferencia: "Transferencia" };
 
 export const folioComprobante = (id: string) => id.slice(0, 8).toUpperCase();
 export const folioNotaCredito = (id: string) => `NC-${id.toUpperCase()}`;
@@ -107,13 +105,13 @@ export function printTicket(venta: Venta, negocio: Negocio) {
   const pagos = venta.esCortesia
     ? `<div class="meta">Cortesía${venta.motivoCortesia ? ` · ${escapeHtml(venta.motivoCortesia)}` : ""}</div>`
     : venta.pagos.map((p) => `
-        <div class="fila meta"><span>${escapeHtml(METODO_LABEL[p.metodoPago] ?? p.metodoPago)}</span><span>${money(p.monto)}</span></div>`).join("");
+        <div class="fila meta"><span>${escapeHtml(ETIQUETAS_PAGO[p.metodoPago] ?? p.metodoPago)}</span><span>${money(p.monto)}</span></div>`).join("");
   const valorCortesia = venta.esCortesia
     ? `<div class="fila"><span>Valor de referencia</span><span>${money(venta.total)}</span></div>`
     : "";
 
   return printDocument(negocio, {
-    titulo: "COMPROBANTE INTERNO DE VENTA",
+    titulo: `${DOCUMENTOS_VENTA[venta.tipoDocumento ?? "interno"].toUpperCase()} DE VENTA`,
     folio: folioComprobante(venta.id),
     fecha: venta.fecha,
     contenido: `
@@ -138,14 +136,14 @@ export function printNotaCredito(venta: Venta, devolucion: Devolucion, negocio: 
     return `
       <div class="fila"><span>${escapeHtml(producto?.nombre ?? "Producto devuelto")}</span><span>${money(it.subtotal)}</span></div>
       <div class="fila detalle">
-        <span>Cantidad: ${it.cantidad}${producto?.sku ? ` · SKU ${escapeHtml(producto.sku)}` : ""}</span>
+        <span>Cantidad: ${it.cantidad}${producto?.codigoBarras ? ` · Código ${escapeHtml(producto.codigoBarras)}` : ""}</span>
       </div>`;
   }).join("");
   const cliente = escapeHtml(venta.cliente?.nombre || "Cliente general");
   const metodo = devolucion.metodoReembolso;
   const reembolso = devolucion.total === 0
     ? "Sin reembolso"
-    : metodo ? escapeHtml(METODO_LABEL[metodo] ?? metodo) : "Sin método registrado";
+    : metodo ? escapeHtml(ETIQUETAS_PAGO[metodo] ?? metodo) : "Sin método registrado";
 
   return printDocument(negocio, {
     titulo: "NOTA DE CRÉDITO INTERNA",

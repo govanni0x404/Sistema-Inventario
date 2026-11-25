@@ -1,3 +1,4 @@
+const { randomUUID } = require("node:crypto");
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
@@ -25,7 +26,6 @@ const fichaSchema = {
 
 const productoSchema = z.object({
   ...fichaSchema,
-  sku: z.string().trim().min(1, "El SKU es obligatorio"),
   codigoBarras: z.preprocess(
     (v) => (v === "" ? null : v),
     z.string().trim().min(1).nullable().optional()
@@ -46,7 +46,6 @@ const productoSchema = z.object({
 // El stock tampoco se actualiza aquí: solo a través de /movimientos, para mantener el registro de auditoría.
 const productoUpdateSchema = z.object({
   ...fichaSchema,
-  sku: z.string().trim().min(1, "El SKU es obligatorio").optional(),
   codigoBarras: z.preprocess(
     (v) => (v === "" ? null : v),
     z.string().trim().min(1).nullable().optional()
@@ -61,7 +60,7 @@ const productoUpdateSchema = z.object({
   activo: z.boolean().optional(),
 });
 
-function serialize({ foto, imagenExterna, ...producto }) {
+function serialize({ foto, imagenExterna, sku, ...producto }) {
   return {
     ...(producto.stockBodegas ? conStockCaja(producto) : producto),
     precioCompra: Number(producto.precioCompra),
@@ -85,15 +84,19 @@ async function obtenerImagen(req, res) {
   res.type(foto.mime).send(foto.datos);
 }
 
-async function generarCodigo(req, res) {
+async function siguienteCodigo(db) {
   for (;;) {
-    const [{ numero }] = await prisma.$queryRaw`SELECT nextval('producto_ean13_seq') AS numero`;
+    const [{ numero }] = await db.$queryRaw`SELECT nextval('producto_ean13_seq') AS numero`;
     const base = `20${String(numero).padStart(10, "0")}`;
     const suma = [...base].reduce((total, digito, i) => total + Number(digito) * (i % 2 === 0 ? 1 : 3), 0);
     const codigoBarras = `${base}${(10 - suma % 10) % 10}`;
-    const existe = await prisma.producto.findFirst({ where: { OR: [{ codigoBarras }, { sku: codigoBarras }] }, select: { id: true } });
-    if (!existe) return res.json({ codigoBarras });
+    const existe = await db.producto.findUnique({ where: { codigoBarras }, select: { id: true } });
+    if (!existe) return codigoBarras;
   }
+}
+
+async function generarCodigo(req, res) {
+  res.json({ codigoBarras: await siguienteCodigo(prisma) });
 }
 
 // GET /api/productos?q=&stockBajo=&activo=
@@ -106,7 +109,6 @@ async function listar(req, res) {
   if (q) {
     where.OR = [
       { nombre: { contains: String(q), mode: "insensitive" } },
-      { sku: { contains: String(q), mode: "insensitive" } },
       { categoria: { nombre: { contains: String(q), mode: "insensitive" } } },
       { subfamilia: { contains: String(q), mode: "insensitive" } },
       { codigoBarras: { contains: String(q), mode: "insensitive" } },
@@ -143,10 +145,6 @@ async function crear(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
 
-  const existente = await prisma.producto.findUnique({ where: { sku: parsed.data.sku } });
-  if (existente) {
-    return res.status(409).json({ error: "Ya existe un producto con ese SKU" });
-  }
   if (parsed.data.codigoBarras) {
     const dupBarras = await prisma.producto.findUnique({ where: { codigoBarras: parsed.data.codigoBarras } });
     if (dupBarras) return res.status(409).json({ error: "Ya existe un producto con ese código de barras" });
@@ -156,7 +154,7 @@ async function crear(req, res) {
     await bloquearCatalogoBodegas(tx);
     const { imagenArchivo: archivo, imagenUrl: enlace, ...datos } = parsed.data;
     const creado = await tx.producto.create({
-      data: { ...datos, imagenExterna: archivo ? null : enlace },
+      data: { ...datos, sku: randomUUID(), codigoBarras: datos.codigoBarras ?? await siguienteCodigo(tx), imagenExterna: archivo ? null : enlace },
     });
     await inicializarStockProducto(tx, creado.id, creado.stock);
     await guardarFoto(tx, creado.id, archivo, enlace);
@@ -175,10 +173,6 @@ async function actualizar(req, res) {
   const producto = await prisma.producto.findUnique({ where: { id: req.params.id } });
   if (!producto) return res.status(404).json({ error: "Producto no encontrado" });
 
-  if (parsed.data.sku && parsed.data.sku !== producto.sku) {
-    const duplicado = await prisma.producto.findUnique({ where: { sku: parsed.data.sku } });
-    if (duplicado) return res.status(409).json({ error: "Ya existe un producto con ese SKU" });
-  }
   if (parsed.data.codigoBarras && parsed.data.codigoBarras !== producto.codigoBarras) {
     const dupBarras = await prisma.producto.findUnique({ where: { codigoBarras: parsed.data.codigoBarras } });
     if (dupBarras) return res.status(409).json({ error: "Ya existe un producto con ese código de barras" });
@@ -261,14 +255,13 @@ async function eliminar(req, res) {
 }
 
 // Fila de importación masiva: el frontend ya parseó el CSV/Excel a JSON, aquí solo se valida
-// y persiste. Si el SKU ya existe se actualiza (sin tocar stock, igual que /:id normal); si no,
+// y persiste. Si el código de barras ya existe se actualiza (sin tocar stock); si no,
 // se crea con el stock inicial que traiga la fila.
 // Una celda vacía (o columna ausente) queda `undefined`: al ACTUALIZAR no se toca ese campo
 // (no se pisa con 0/null), y al CREAR se usa 0 para precioCompra, stock y stockMinimo.
 const vacioAUndefined = (v) => (v === "" || v == null ? undefined : v);
 const filaImportSchema = z.object({
-  sku: z.string().trim().min(1, "SKU obligatorio"),
-  codigoBarras: z.preprocess(vacioAUndefined, z.string().trim().min(1).optional()),
+  codigoBarras: z.string({ required_error: "Código de barras obligatorio" }).trim().min(1, "Código de barras obligatorio"),
   nombre: z.string().trim().min(1, "Nombre obligatorio"),
   categoria: z.preprocess((v) => (v === "" ? null : v), z.string().trim().optional().nullable()),
   precioCompra: z.preprocess(vacioAUndefined, z.coerce.number().nonnegative("Precio de compra inválido").optional()),
@@ -313,7 +306,7 @@ async function importar(req, res) {
     if (!filaParsed.success) {
       errores++;
       const mensaje = Object.values(filaParsed.error.flatten().fieldErrors).flat().join("; ") || "Datos inválidos";
-      resultados.push({ fila, sku: typeof raw.sku === "string" ? raw.sku : null, ok: false, error: mensaje });
+      resultados.push({ fila, codigoBarras: typeof raw.codigoBarras === "string" ? raw.codigoBarras : null, ok: false, error: mensaje });
       continue;
     }
 
@@ -341,13 +334,9 @@ async function importar(req, res) {
       }
       const nota = notas.length > 0 ? notas.join("; ") : undefined;
 
-      const existente = await prisma.producto.findUnique({ where: { sku: datos.sku } });
+      const existente = await prisma.producto.findUnique({ where: { codigoBarras: datos.codigoBarras } });
 
       if (existente) {
-        if (datos.codigoBarras && datos.codigoBarras !== existente.codigoBarras) {
-          const dupBarras = await prisma.producto.findUnique({ where: { codigoBarras: datos.codigoBarras } });
-          if (dupBarras) throw new Error(`El código de barras ya pertenece a "${dupBarras.nombre}"`);
-        }
         // El stock nunca se toca al actualizar (se mueve con entradas/salidas); los campos
         // vacíos en la fila quedan undefined y Prisma los ignora.
         const { stock, ...actualizables } = datos;
@@ -380,12 +369,8 @@ async function importar(req, res) {
           return upd;
         });
         actualizados++;
-        resultados.push({ fila, sku: actualizado.sku, ok: true, accion: "actualizado", nota });
+        resultados.push({ fila, codigoBarras: actualizado.codigoBarras, ok: true, accion: "actualizado", nota });
       } else {
-        if (datos.codigoBarras) {
-          const dupBarras = await prisma.producto.findUnique({ where: { codigoBarras: datos.codigoBarras } });
-          if (dupBarras) throw new Error(`El código de barras ya pertenece a "${dupBarras.nombre}"`);
-        }
         const unidadFinal = unidadId ?? unidadDefecto?.id;
         if (!unidadFinal) throw new Error("No hay unidades configuradas en el sistema");
         const creado = await prisma.$transaction(async (tx) => {
@@ -396,6 +381,7 @@ async function importar(req, res) {
               stock: 0,
               stockMinimo: 0,
               ...Object.fromEntries(Object.entries(datos).filter(([, v]) => v !== undefined)),
+              sku: randomUUID(),
               proveedorId: proveedorId ?? null,
               categoriaId: categoriaId ?? null,
               unidadId: unidadFinal,
@@ -405,11 +391,11 @@ async function importar(req, res) {
           return p;
         });
         creados++;
-        resultados.push({ fila, sku: creado.sku, ok: true, accion: "creado", nota });
+        resultados.push({ fila, codigoBarras: creado.codigoBarras, ok: true, accion: "creado", nota });
       }
     } catch (e) {
       errores++;
-      resultados.push({ fila, sku: datos.sku, ok: false, error: e.message || "Error al guardar" });
+      resultados.push({ fila, codigoBarras: datos.codigoBarras, ok: false, error: e.code === "P2002" ? "El código de barras ya existe" : e.message || "Error al guardar" });
     }
   }
 

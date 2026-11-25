@@ -5,7 +5,7 @@ import { ventasApi } from "../api/ventas";
 import { clientesApi } from "../api/clientes";
 import { turnosApi } from "../api/turnos";
 import { ApiError } from "../api/client";
-import type { Venta, MetodoPago } from "../types/venta";
+import { ETIQUETAS_PAGO, type Venta } from "../types/venta";
 import type { Cliente } from "../types/cliente";
 import type { TurnoCaja } from "../types/turno";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,7 +23,6 @@ import { folioComprobante } from "../lib/printTicket";
 import { validarRango } from "../lib/fechas";
 
 
-const METODOS: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
 const TODOS = "__todos__";
 
 type RangoPreset = "hoy" | "7d" | "30d" | "90d" | "custom";
@@ -238,9 +237,9 @@ export default function HistorialPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={TODOS}>Todos los métodos</SelectItem>
-            {METODOS.map((m) => (
-              <SelectItem key={m} value={m} className="capitalize">
-                {m}
+            {Object.entries(ETIQUETAS_PAGO).map(([m, etiqueta]) => (
+              <SelectItem key={m} value={m}>
+                {etiqueta}
               </SelectItem>
             ))}
           </SelectContent>
@@ -345,7 +344,7 @@ export default function HistorialPage() {
                       <div className="flex flex-wrap gap-1">
                         {v.pagos.map((p) => (
                           <Badge key={p.id} variant="secondary" className="capitalize">
-                            {p.metodoPago} · {money(p.monto)}
+                            {ETIQUETAS_PAGO[p.metodoPago]} · {money(p.monto)}
                           </Badge>
                         ))}
                       </div>

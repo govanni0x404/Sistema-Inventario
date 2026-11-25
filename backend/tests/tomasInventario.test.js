@@ -68,7 +68,7 @@ describe("Toma y ajuste de inventario", () => {
       id: randomUUID(), tipo: "inventario", motivo: "Inventario", items: [linea(producto, 10, 2), linea(otro, 5, 5)],
     });
     expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error).toContain(otro.sku);
+    expect(respuesta.body.error).toContain(otro.nombre);
     expect((await prisma.producto.findUniqueOrThrow({ where: { id: producto.id } })).stock).toBe(10);
     expect((await prisma.producto.findUniqueOrThrow({ where: { id: otro.id } })).stock).toBe(4);
     expect(await prisma.tomaInventario.count()).toBe(0);

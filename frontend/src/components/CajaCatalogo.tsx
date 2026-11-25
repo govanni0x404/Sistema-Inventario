@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { money } from "@/lib/format";
+import { moneyCaja as money } from "@/lib/format";
 import type { Producto } from "@/types/producto";
 
 const TODAS = "todas";
@@ -24,15 +24,16 @@ function agruparPorFamilia(productos: Producto[]) {
     .sort((a, b) => Number(a.id === SIN_FAMILIA) - Number(b.id === SIN_FAMILIA) || orden.compare(a.nombre, b.nombre))
     .map((grupo) => ({
       ...grupo,
-      productos: grupo.productos.sort((a, b) => orden.compare(a.nombre, b.nombre) || orden.compare(a.sku, b.sku)),
+      productos: grupo.productos.sort((a, b) => orden.compare(a.nombre, b.nombre) || orden.compare(a.codigoBarras ?? "", b.codigoBarras ?? "")),
     }));
 }
 
-export default function CajaCatalogo({ productos, agregar, precio, bloqueado, enfocarBusqueda }: {
+export default function CajaCatalogo({ productos, agregar, precio, bloqueado, enfocarBusqueda, permiteSinStock }: {
   productos: Producto[];
   agregar: (producto: Producto) => void;
   precio: (producto: Producto) => number;
   bloqueado: boolean;
+  permiteSinStock: boolean;
   enfocarBusqueda: () => void;
 }) {
   const [familiaId, setFamiliaId] = useState(TODAS);
@@ -81,7 +82,7 @@ export default function CajaCatalogo({ productos, agregar, precio, bloqueado, en
                 {familia.productos.map((producto) => (
                   <li key={producto.id} className="min-w-0">
                     <DialogClose asChild>
-                      <button type="button" disabled={bloqueado || (producto.inventariable !== false && producto.stockCaja <= 0)}
+                      <button type="button" disabled={bloqueado || (!permiteSinStock && producto.inventariable !== false && producto.stockCaja <= 0)}
                         onClick={() => {
                           regresarABusqueda.current = true;
                           agregar(producto);
@@ -89,7 +90,7 @@ export default function CajaCatalogo({ productos, agregar, precio, bloqueado, en
                         className="flex h-full w-full flex-col gap-2 rounded-xl border bg-card p-2 text-left transition-colors enabled:hover:border-primary enabled:hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-65">
                         <ImagenProducto key={producto.imagenUrl ?? ""} url={producto.imagenUrl} className="aspect-[4/3] w-full" />
                         <span className="text-sm leading-snug font-semibold [overflow-wrap:anywhere]">{producto.nombre}</span>
-                        <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{producto.sku}</span>
+                        {producto.codigoBarras && <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{producto.codigoBarras}</span>}
                         <span className="mt-auto flex flex-wrap items-baseline justify-between gap-1 pt-0.5">
                           {producto.mostrarPrecio !== false && <span className="text-sm font-semibold tabular-nums">{money(precio(producto))}</span>}
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

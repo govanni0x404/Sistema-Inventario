@@ -2,15 +2,17 @@
 // Todas las pantallas importan de aquí, así cambiar de país es tocar un solo archivo.
 export const LOCALE = "es-CL";
 
-const formatoMoneda = new Intl.NumberFormat(LOCALE, {
+const opcionesMoneda = {
   style: "currency",
   currency: "CLP",
   minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
+} as const;
+const formatoMoneda = new Intl.NumberFormat(LOCALE, { ...opcionesMoneda, maximumFractionDigits: 0 });
+const formatoMontoCaja = new Intl.NumberFormat(LOCALE, { ...opcionesMoneda, maximumFractionDigits: 2 });
 
 /** $12.345 — pesos chilenos, sin decimales. */
 export const money = (n: number) => formatoMoneda.format(Number(n || 0));
+export const moneyCaja = (n: number) => formatoMontoCaja.format(n);
 
 export const aCentavos = (monto: number) => Math.round(monto * 100);
 

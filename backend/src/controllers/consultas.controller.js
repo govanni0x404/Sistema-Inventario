@@ -1,4 +1,5 @@
 const prisma = require("../lib/prisma");
+const METODOS_PAGO = require("../lib/metodosPago");
 const { resolverRango, claveDia } = require("../lib/rangoFechas");
 const HttpError = require("../lib/HttpError");
 const { filtroFolio } = require("../lib/folioVenta");
@@ -22,7 +23,7 @@ async function productosTop(req, res) {
 
   const productos = await prisma.producto.findMany({
     where: { id: { in: itemsRaw.map((i) => i.productoId) } },
-    select: { id: true, nombre: true, sku: true },
+    select: { id: true, nombre: true, codigoBarras: true },
   });
   const productoPorId = new Map(productos.map((p) => [p.id, p]));
 
@@ -31,7 +32,7 @@ async function productosTop(req, res) {
     productos: itemsRaw.map((it) => ({
       productoId: it.productoId,
       nombre: productoPorId.get(it.productoId)?.nombre ?? "Producto eliminado",
-      sku: productoPorId.get(it.productoId)?.sku ?? "",
+      codigoBarras: productoPorId.get(it.productoId)?.codigoBarras ?? null,
       cantidad: it._sum.cantidad,
       subtotal: Number(it._sum.subtotal),
     })),
@@ -128,13 +129,13 @@ async function productosMargen(req, res) {
       ) / 100 AS ingreso
       FROM acumulados
     )
-    SELECT p.id AS "productoId", p.nombre, p.sku, SUM(i.cantidad) AS cantidad,
+    SELECT p.id AS "productoId", p.nombre, p."codigoBarras", SUM(i.cantidad) AS cantidad,
            SUM(i.ingreso) AS ingreso,
            SUM(COALESCE(i."costoUnitario", p."precioCompra") * i.cantidad) AS costo,
            SUM(i.ingreso - COALESCE(i."costoUnitario", p."precioCompra") * i.cantidad) AS margen,
            BOOL_OR(i."costoUnitario" IS NULL) AS "costoEstimado"
     FROM importes i JOIN productos p ON p.id = i."productoId"
-    GROUP BY p.id, p.nombre, p.sku
+    GROUP BY p.id, p.nombre, p."codigoBarras"
     ORDER BY margen DESC, p.nombre, p.id
     LIMIT ${limite}
   `;
@@ -154,7 +155,7 @@ async function productosMargen(req, res) {
 async function detallePagos(req, res) {
   const { rangoInicio, rangoFin } = resolverRango(req.query, new Date());
   const { metodo, folio } = req.query;
-  if (metodo !== undefined && !["efectivo", "tarjeta", "transferencia"].includes(metodo)) {
+  if (metodo !== undefined && !METODOS_PAGO.includes(metodo)) {
     throw new HttpError(400, "Selecciona una forma de pago válida.");
   }
   const fecha = { gte: rangoInicio, lte: rangoFin };
@@ -199,11 +200,11 @@ async function detalleProductos(req, res) {
   const items = await prisma.ventaItem.findMany({
     where: {
       venta: { ...filtroFolio(folio), fecha: { gte: rangoInicio, lte: rangoFin } },
-      ...(busqueda && { producto: { OR: [{ nombre: coincide }, { sku: coincide }, { codigoBarras: coincide }] } }),
+      ...(busqueda && { producto: { OR: [{ nombre: coincide }, { codigoBarras: coincide }] } }),
     },
     select: {
       id: true, ventaId: true, cantidad: true, subtotal: true,
-      producto: { select: { nombre: true, sku: true } },
+      producto: { select: { nombre: true, codigoBarras: true } },
       venta: { select: { fecha: true, esCortesia: true } },
       devolucionItems: { select: { cantidad: true } },
     },
@@ -212,7 +213,7 @@ async function detalleProductos(req, res) {
   });
   const filas = items.slice(0, LIMITE_DETALLE).map((it) => ({
     id: it.id, ventaId: it.ventaId, fecha: it.venta.fecha, esCortesia: it.venta.esCortesia,
-    producto: it.producto.nombre, sku: it.producto.sku, cantidad: it.cantidad,
+    producto: it.producto.nombre, codigoBarras: it.producto.codigoBarras, cantidad: it.cantidad,
     cantidadDevuelta: it.devolucionItems.reduce((total, devolucion) => total + devolucion.cantidad, 0),
     subtotal: Number(it.subtotal),
   }));

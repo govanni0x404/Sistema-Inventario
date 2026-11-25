@@ -10,6 +10,15 @@ export interface DashboardResumen {
   };
   ventasPorDia: { fecha: string; total: number; cantidad: number }[];
   ventasPorMetodo: { metodoPago: string; total: number }[];
-  productosTop: { productoId: string; nombre: string; sku: string; cantidad: number; subtotal: number }[];
-  stockBajo: { id: string; nombre: string; sku: string; stock: number; stockMinimo: number; unidad: string }[];
+  ventasPorUsuario: { usuarioId: string | null; nombre: string; cantidad: number; total: number }[];
+  ventasRecientes: {
+    id: string;
+    fecha: string;
+    usuario: string | null;
+    total: number;
+    esCortesia: boolean;
+    pagos: { metodoPago: string; monto: number }[];
+  }[];
+  productosTop: { productoId: string; nombre: string; codigoBarras: string | null; cantidad: number; subtotal: number }[];
+  stockBajo: { id: string; nombre: string; codigoBarras: string | null; stock: number; stockMinimo: number; unidad: string }[];
 }

@@ -12,6 +12,10 @@ const VACIO: Negocio = {
   telefono: null,
   email: null,
   mensajeTicket: null,
+  venderSinStock: false,
+  agruparProductosCaja: true,
+  documentoVentaDefecto: "interno",
+  descuentoMaximoCaja: 100,
 };
 
 type NegocioState = {
@@ -44,10 +48,6 @@ export function NegocioProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     recargar();
   }, [recargar]);
-
-  useEffect(() => {
-    document.title = negocio.nombre;
-  }, [negocio.nombre]);
 
   return <NegocioContext.Provider value={{ negocio, recargar }}>{children}</NegocioContext.Provider>;
 }

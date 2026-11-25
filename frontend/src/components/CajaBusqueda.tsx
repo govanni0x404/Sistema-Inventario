@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import CajaCatalogo from "@/components/CajaCatalogo";
-import { money } from "@/lib/format";
+import { moneyCaja as money } from "@/lib/format";
 import type { Producto } from "@/types/producto";
 
 const claveFavoritos = "inventario_caja_favoritos";
@@ -18,7 +18,7 @@ function leerFavoritos(): string[] {
   }
 }
 
-export default function CajaBusqueda({ productos, resultados, texto, alBuscar, alTecla, agregar, precio, bloqueado }: {
+export default function CajaBusqueda({ productos, resultados, texto, alBuscar, alTecla, agregar, precio, bloqueado, permiteSinStock }: {
   productos: Producto[];
   resultados: Producto[];
   texto: string;
@@ -27,12 +27,16 @@ export default function CajaBusqueda({ productos, resultados, texto, alBuscar, a
   agregar: (p: Producto) => void;
   precio: (p: Producto) => number;
   bloqueado: boolean;
+  permiteSinStock: boolean;
 }) {
   const [favoritos, setFavoritos] = useState(leerFavoritos);
   const [verFavoritos, setVerFavoritos] = useState(false);
   const campoBusqueda = useRef<HTMLInputElement>(null);
   const volverABusqueda = useRef(false);
+  const [resaltado, setResaltado] = useState(-1);
   const destacados = productos.filter((p) => favoritos.includes(p.id));
+  const habilitados = resultados.filter((p) => permiteSinStock || p.inventariable === false || p.stockCaja > 0);
+  const seleccionado = habilitados[resaltado];
 
   const alternarFavorito = (id: string) => {
     const siguientes = favoritos.includes(id) ? favoritos.filter((valor) => valor !== id) : [...favoritos, id];
@@ -46,18 +50,21 @@ export default function CajaBusqueda({ productos, resultados, texto, alBuscar, a
         const favorito = favoritos.includes(p.id);
         return (
           <li key={p.id} className="flex items-center gap-1 p-1">
-            <button type="button" disabled={bloqueado || (p.inventariable !== false && p.stockCaja <= 0)} onClick={() => {
+            <button type="button" disabled={bloqueado || (!permiteSinStock && p.inventariable !== false && p.stockCaja <= 0)} onClick={() => {
               agregar(p);
+              setResaltado(-1);
               if (desdeFavoritos) {
                 volverABusqueda.current = true;
                 setVerFavoritos(false);
               } else {
                 campoBusqueda.current?.focus();
               }
-            }} className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-muted disabled:opacity-50">
+            }} data-resaltado={!desdeFavoritos && seleccionado?.id === p.id}
+              className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-muted data-[resaltado=true]:bg-accent data-[resaltado=true]:text-accent-foreground disabled:opacity-50">
               <span className="min-w-0">
+                <span className="block truncate font-mono text-xs text-muted-foreground">{p.codigoBarras || "Sin código"}</span>
                 <span className="block truncate text-sm font-semibold">{p.nombre}</span>
-                <span className="block truncate text-xs text-muted-foreground">{p.codigoBarras || p.sku}{p.inventariable !== false && ` · ${p.stockCaja} disp.`}</span>
+                {p.inventariable !== false && <span className="block truncate text-xs text-muted-foreground">{p.stockCaja > 0 ? `${p.stockCaja} disp.` : "Sin stock"}</span>}
               </span>
               {p.mostrarPrecio !== false && <span className="shrink-0 text-sm font-semibold tabular-nums">{money(precio(p))}</span>}
             </button>
@@ -75,13 +82,24 @@ export default function CajaBusqueda({ productos, resultados, texto, alBuscar, a
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <div className="group relative min-w-44 flex-1">
         <Search size={17} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <Input ref={campoBusqueda} autoFocus aria-label="Buscar producto por nombre, SKU o código de barras" autoComplete="off"
-          placeholder="Buscar producto, SKU o código de barras…" className="h-11 bg-card pr-12 pl-10"
-          value={texto} onChange={(e) => alBuscar(e.target.value)} onKeyDown={(e) => {
-            if (e.key === "Escape") alBuscar("");
-            else alTecla(e);
+        <Input ref={campoBusqueda} autoFocus aria-label="Buscar producto por nombre o código de barras" autoComplete="off"
+          aria-describedby="caja-busqueda-teclado" placeholder="Buscar producto o código de barras…" className="h-11 bg-card pr-12 pl-10"
+          value={texto} onChange={(e) => { setResaltado(-1); alBuscar(e.target.value); }} onKeyDown={(e) => {
+            if (e.key === "Escape") { setResaltado(-1); alBuscar(""); }
+            else if (!bloqueado && habilitados.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              e.preventDefault();
+              const siguiente = e.key === "ArrowDown" ? (resaltado + 1) % habilitados.length : resaltado <= 0 ? habilitados.length - 1 : resaltado - 1;
+              setResaltado(siguiente);
+              campoBusqueda.current?.parentElement?.querySelectorAll<HTMLButtonElement>("li > button:first-child:not(:disabled)")[siguiente]?.scrollIntoView({ block: "nearest" });
+            } else if (!bloqueado && e.key === "Enter" && seleccionado) {
+              e.preventDefault();
+              agregar(seleccionado);
+              setResaltado(-1);
+            } else alTecla(e);
           }} />
-        <CajaCatalogo productos={productos} agregar={agregar} precio={precio} bloqueado={bloqueado}
+        <span id="caja-busqueda-teclado" className="sr-only">Usa las flechas para recorrer los resultados y Enter para agregar el producto.</span>
+        <span className="sr-only" aria-live="polite">{seleccionado?.nombre ?? ""}</span>
+        <CajaCatalogo productos={productos} agregar={agregar} precio={precio} bloqueado={bloqueado} permiteSinStock={permiteSinStock}
           enfocarBusqueda={() => campoBusqueda.current?.focus()} />
         {texto.trim() && (
           <div className="absolute inset-x-0 top-full z-20 mt-1 hidden rounded-xl border bg-card shadow-lg group-focus-within:block">

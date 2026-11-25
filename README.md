@@ -1,6 +1,6 @@
-# Caja e Inventario
+# Kardexia
 
-Sistema de punto de venta e inventario en pesos chilenos. Permite abrir y cerrar turnos, cobrar con hasta dos medios de pago, guardar ventas en espera y registrar devoluciones. Mantiene stock por bodega y un historial de movimientos, con catálogos, listas de precios, usuarios, permisos y reportes exportables.
+Sistema de punto de venta e inventario en pesos chilenos. Permite abrir y cerrar turnos, combinar medios de pago, guardar ventas en espera y registrar devoluciones. Mantiene stock por bodega y un historial de movimientos, con catálogos, listas de precios, usuarios, permisos y reportes exportables.
 
 ## Desarrollo local
 

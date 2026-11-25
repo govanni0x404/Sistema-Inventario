@@ -9,12 +9,13 @@ const { buscarTurnoAbierto } = require("../lib/turnoAbierto");
 const { fechaDeQuery } = require("../lib/rangoFechas");
 const { filtroFolio } = require("../lib/folioVenta");
 const { aCentavos, MAX_CENTAVOS, montoEnCentavos, proporcionRedondeada } = require("../lib/dinero");
+const { obtenerNegocio, DOCUMENTOS_VENTA } = require("./negocio.controller");
 
-const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia"];
+const METODOS_PAGO = require("../lib/metodosPago");
 const cantidadSchema = z.coerce.number().int().positive("La cantidad debe ser mayor a 0").max(2_147_483_647);
 const VENTA_INCLUDE = {
   cliente: { select: { id: true, nombre: true } },
-  items: { include: { producto: { select: { id: true, nombre: true, sku: true } } } },
+  items: { include: { producto: { select: { id: true, nombre: true, codigoBarras: true } } } },
   turnoCaja: { select: { id: true, caja: { select: { nombre: true } }, tipoTurno: { select: { nombre: true } } } },
   pagos: true,
 };
@@ -25,6 +26,7 @@ const ventaSchema = z
     turnoCajaId: z.string().uuid().optional(),
     clienteId: z.string().uuid().optional().nullable(),
     listaPrecioId: z.string().uuid().optional().nullable(),
+    tipoDocumento: z.enum(DOCUMENTOS_VENTA).optional(),
     esCortesia: z.boolean().optional().default(false),
     motivoCortesia: z.string().trim().optional().nullable(),
     pagos: z
@@ -34,7 +36,7 @@ const ventaSchema = z
           monto: montoEnCentavos.refine((monto) => monto > 0, "El monto del pago debe ser mayor a 0"),
         })
       )
-      .max(2, "Máximo 2 formas de pago por venta")
+      .max(METODOS_PAGO.length)
       .refine((pagos) => new Set(pagos.map((p) => p.metodoPago)).size === pagos.length, {
         message: "No puedes repetir la misma forma de pago",
       })
@@ -94,7 +96,7 @@ const DEVOLUCION_INCLUDE = {
 const devolucionSchema = z.object({
   turnoCajaId: z.string().uuid().optional(),
   motivo: z.string().optional().nullable(),
-  // Obligatorio solo si la venta se pagó con 2 formas de pago; si no, se usa la única que tuvo.
+  // Con más de una forma de pago se debe elegir el método de reembolso.
   metodoReembolso: z
     .enum(METODOS_PAGO, { errorMap: () => ({ message: "Método de reembolso inválido" }) })
     .optional()
@@ -240,7 +242,7 @@ async function crear(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
   const {
-    claveIdempotencia, turnoCajaId, clienteId, listaPrecioId, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia,
+    claveIdempotencia, turnoCajaId, clienteId, listaPrecioId, tipoDocumento, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia,
   } = parsed.data;
   const usuarioId = req.user.id;
 
@@ -257,11 +259,13 @@ async function crear(req, res) {
     turnoCajaId,
     clienteId: clienteId ?? null,
     listaPrecioId: listaPrecioId ?? null,
+    ...(tipoDocumento !== undefined && { tipoDocumento }),
     esCortesia,
     motivoCortesia: esCortesia ? motivoCortesia : null,
     descuentoTicket,
     pagos: esCortesia ? [] : [...pagos].sort((a, b) => a.metodoPago.localeCompare(b.metodoPago)),
     items: productoIds.map((id) => [id, cantidadPorProducto.get(id), descuentoPorProducto.get(id)]),
+    ...(tipoDocumento !== undefined && items.length !== productoIds.length && { lineas: items }),
   })).digest("hex") : null;
 
   const venta = await prisma.$transaction(async (tx) => {
@@ -285,6 +289,7 @@ async function crear(req, res) {
     if (!turnoAbierto) {
       throw new HttpError(409, "Debes abrir un turno de caja antes de vender");
     }
+    const configuracion = await obtenerNegocio(tx);
 
     if (clienteId) {
       const cliente = await tx.cliente.findUnique({ where: { id: clienteId } });
@@ -307,6 +312,7 @@ async function crear(req, res) {
     const productoPorId = new Map(productos.map((producto) => [producto.id, producto]));
 
     let subtotalVenta = 0;
+    let brutoVenta = 0;
     const itemsData = [];
     const stockResultantePorProducto = new Map();
 
@@ -319,20 +325,32 @@ async function crear(req, res) {
       if (!producto.ventaPublico) {
         throw new HttpError(409, `"${producto.nombre}" no está habilitado para venta al público`);
       }
-      if (producto.inventariable && producto.stock < cantidad) {
+      if (cantidad > 2_147_483_647 || (producto.inventariable && producto.stock - cantidad < -2_147_483_648)) {
+        throw new HttpError(400, `Cantidad fuera de rango para "${producto.nombre}"`);
+      }
+      if (producto.inventariable && !configuracion.venderSinStock && producto.stock < cantidad) {
         throw new HttpError(409, `Stock insuficiente para "${producto.nombre}" (disponible: ${producto.stock})`);
       }
+    }
 
+    const lineas = configuracion.agruparProductosCaja
+      ? [...cantidadPorProducto].map(([productoId, cantidad]) => ({ productoId, cantidad, descuento: descuentoPorProducto.get(productoId) }))
+      : items;
+    for (const { productoId, cantidad, descuento: descuentoItem } of lineas) {
+      const producto = productoPorId.get(productoId);
       const precioUnitario = precioListaPorProducto.get(productoId) ?? aCentavos(producto.precioVenta);
       const bruto = precioUnitario * cantidad;
-      const descuentoItem = descuentoPorProducto.get(productoId) || 0;
       if (descuentoItem > bruto) {
         throw new HttpError(400, `El descuento de "${producto.nombre}" no puede superar su subtotal (${bruto / 100})`);
       }
       const subtotal = bruto - descuentoItem;
       subtotalVenta += subtotal;
-      if (subtotalVenta > MAX_CENTAVOS || descuentoItem > MAX_CENTAVOS) {
+      brutoVenta += bruto;
+      if (brutoVenta > MAX_CENTAVOS || subtotalVenta > MAX_CENTAVOS) {
         throw new HttpError(400, "El importe del ticket supera el máximo permitido");
+      }
+      if (descuentoItem > Math.floor(bruto * configuracion.descuentoMaximoCaja / 100)) {
+        throw new HttpError(400, `El descuento de "${producto.nombre}" supera el máximo de ${configuracion.descuentoMaximoCaja} %`);
       }
       itemsData.push({
         productoId,
@@ -349,6 +367,9 @@ async function crear(req, res) {
       throw new HttpError(400, `El descuento no puede superar el subtotal del ticket (${subtotalVenta / 100})`);
     }
     const total = subtotalVenta - descuentoTicket;
+    if (brutoVenta - total > Math.floor(brutoVenta * configuracion.descuentoMaximoCaja / 100)) {
+      throw new HttpError(400, `El descuento total supera el máximo de ${configuracion.descuentoMaximoCaja} %`);
+    }
 
     if (!esCortesia) {
       const sumaPagos = pagos.reduce((s, p) => s + p.monto, 0);
@@ -357,17 +378,18 @@ async function crear(req, res) {
       }
     }
 
-    const itemsConStock = itemsData.filter((item) => item.inventariable);
+    const itemsConStock = productoIds.filter((id) => productoPorId.get(id).inventariable)
+      .map((productoId) => ({ productoId, cantidad: cantidadPorProducto.get(productoId) }));
     const bodega = itemsConStock.length ? await bodegaPrincipal(tx) : null;
     for (const { productoId, cantidad } of itemsConStock) {
       const resultado = await tx.producto.updateMany({
-        where: { id: productoId, activo: true, stock: { gte: cantidad } },
+        where: { id: productoId, activo: true, ...(!configuracion.venderSinStock && { stock: { gte: cantidad } }) },
         data: { stock: { decrement: cantidad } },
       });
       if (resultado.count === 0) {
         throw new HttpError(409, `Stock insuficiente para "${productoPorId.get(productoId).nombre}"`);
       }
-      await ajustarStockBodega(tx, bodega.id, productoId, -cantidad);
+      await ajustarStockBodega(tx, bodega.id, productoId, -cantidad, configuracion.venderSinStock);
       const { stock } = await tx.producto.findUniqueOrThrow({ where: { id: productoId }, select: { stock: true } });
       stockResultantePorProducto.set(productoId, stock);
     }
@@ -378,6 +400,7 @@ async function crear(req, res) {
         subtotal: subtotalVenta / 100,
         descuento: descuentoTicket / 100,
         total: total / 100,
+        tipoDocumento: tipoDocumento ?? configuracion.documentoVentaDefecto,
         esCortesia,
         motivoCortesia: esCortesia ? motivoCortesia.trim() : null,
         usuarioId,

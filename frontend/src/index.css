@@ -10,91 +10,90 @@
   --font-body: "Inter", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
 
-  --background: #f7f4f4;
-  --foreground: #29242b;
+  --background: #f1f3f4;
+  --foreground: #202b32;
 
   --card: #ffffff;
-  --card-foreground: #29242b;
+  --card-foreground: var(--foreground);
   --popover: #ffffff;
-  --popover-foreground: #29242b;
+  --popover-foreground: var(--foreground);
 
-  --primary: #8d293e;
+  --primary: #285972;
   --primary-foreground: #ffffff;
 
-  --secondary: #f4e6e8;
-  --secondary-foreground: #692435;
+  --secondary: #e3ebef;
+  --secondary-foreground: #24485b;
 
-  --muted: #f0eaec;
-  --muted-foreground: #635962;
+  --muted: #e9edef;
+  --muted-foreground: #52606a;
 
-  --accent: #f5e3e7;
-  --accent-foreground: #692435;
+  --accent: #dce8ed;
+  --accent-foreground: #24485b;
 
   --destructive: #b54a2c;
   --destructive-foreground: #ffffff;
 
-  --border: #e3d9dd;
-  --input: #ddcfd4;
-  --ring: #a0324a;
+  --border: #d4dce0;
+  --input: #bfcbd1;
+  --ring: #3b7995;
 
-  --chart-1: #8d293e;
-  --chart-2: #b54a2c;
-  --chart-3: #466473;
-  --chart-4: #d6a648;
-  --chart-5: #bc7952;
+  --chart-1: var(--primary);
+  --chart-2: #a36543;
+  --chart-3: #36746e;
+  --chart-4: #7c6960;
+  --chart-5: #637b91;
 
-  --sidebar: #28212a;
-  --sidebar-foreground: #fff7f8;
-  --sidebar-muted: #e2cfd5;
-  --sidebar-primary: #f4a1af;
-  --sidebar-primary-foreground: #371520;
-  --sidebar-accent: #653444;
-  --sidebar-accent-foreground: #fff7f8;
-  --sidebar-border: #53414b;
-  --sidebar-ring: #f4a1af;
-  --hero: #392530;
-  --hero-foreground: #fff9fa;
-  --hero-muted: #eadbe0;
+  --sidebar: #25343d;
+  --sidebar-foreground: #f6f9fa;
+  --sidebar-muted: #cbd7de;
+  --sidebar-primary: #abd2e4;
+  --sidebar-primary-foreground: #162c38;
+  --sidebar-accent: #37576a;
+  --sidebar-accent-foreground: var(--sidebar-foreground);
+  --sidebar-border: #465964;
+  --sidebar-ring: var(--sidebar-primary);
+  --hero: #263945;
+  --hero-foreground: #f6f9fa;
+  --hero-muted: #d4e0e6;
+  --access-photo-tint: #26394524;
 }
 
 .dark {
-  --background: #18151a;
-  --foreground: #f8eff2;
+  --background: #171f25;
+  --foreground: #edf3f6;
 
-  --card: #241e25;
-  --card-foreground: #f8eff2;
-  --popover: #241e25;
-  --popover-foreground: #f8eff2;
+  --card: #222e36;
+  --popover: var(--card);
 
-  --primary: #f39bad;
-  --primary-foreground: #31121e;
+  --primary: #a6d0e5;
+  --primary-foreground: #162c38;
 
-  --secondary: #3b2933;
-  --secondary-foreground: #f7dce5;
+  --secondary: #304551;
+  --secondary-foreground: #d7eaf3;
 
-  --muted: #302830;
-  --muted-foreground: #cbb9c1;
+  --muted: #2c3942;
+  --muted-foreground: #b8c8d1;
 
-  --accent: #442c38;
-  --accent-foreground: #f7dce5;
+  --accent: #354c59;
+  --accent-foreground: #d7eaf3;
 
   --destructive: #e2795e;
   --destructive-foreground: #180a06;
 
-  --border: #473943;
-  --input: #51404a;
-  --ring: #f39bad;
+  --border: #3c4d58;
+  --input: #526773;
+  --ring: #a6d0e5;
 
-  --chart-1: #f39bad;
-  --chart-2: #e2795e;
-  --chart-3: #b2c1d0;
-  --chart-4: #82aab7;
-  --chart-5: #b54a2c;
+  --chart-2: #d8a084;
+  --chart-3: #7cbdb3;
+  --chart-4: #bfaea3;
+  --chart-5: #a0b1cb;
 
-  --sidebar: #211b23;
-  --sidebar-accent: #603341;
-  --sidebar-border: #493740;
-  --hero: #34232e;
+  --sidebar: #1d2931;
+  --sidebar-accent: #304d5e;
+  --sidebar-border: #3a4b55;
+  --hero: #1d303b;
+  --access-photo-tint: #14212c66;
 }
 
 @theme inline {
@@ -162,8 +161,16 @@
 }
 
 @layer components {
+  .app-workspace {
+    background: linear-gradient(165deg, color-mix(in srgb, var(--primary) 9%, var(--background)), var(--background) 24rem);
+  }
+
   .access-page {
-    background: linear-gradient(135deg, #32111c42, #1c172174), url("/inventario-acceso.jpg") center / cover no-repeat, #29222a;
+    background: linear-gradient(var(--access-photo-tint), var(--access-photo-tint)), url("/inventario2.jpg") center / cover no-repeat, var(--hero);
+  }
+
+  .access-brand {
+    background: linear-gradient(155deg, #213745a8, #142631f5 80%), url("/inventario2.jpg") 32% center / cover no-repeat, var(--hero);
   }
 
   .sidebar-photo {
@@ -182,18 +189,18 @@
   .sidebar-photo::before {
     inset: -6px;
     z-index: -2;
-    background: url("/inventario-acceso.jpg") 43% center / cover no-repeat;
+    background: url("/inventario2.jpg") 27% center / cover no-repeat;
     filter: blur(3px);
   }
 
   .sidebar-photo::after {
     inset: 0;
     z-index: -1;
-    background: linear-gradient(155deg, #2c1a26e8, #1a1821cc 48%, #241820eb);
+    background: linear-gradient(155deg, #21323de8, #182631cf 48%, #202e37eb);
   }
 
   .company-banner {
-    background: linear-gradient(90deg, #302029fa, #302029ec 49%, #30202955), url("/inventario.jpg") center 48% / cover no-repeat, var(--hero);
+    background: linear-gradient(90deg, #182b37fa, #263945d9 53%, #23394766), url("/inventario2.jpg") center 55% / cover no-repeat, var(--hero);
   }
 
   .cash-opening {
@@ -208,13 +215,13 @@
     inset: -18px;
     z-index: -1;
     content: "";
-    background: linear-gradient(135deg, #30202955, #302029ba), url("/inventario.jpg") center / cover no-repeat;
+    background: linear-gradient(135deg, #26394555, #263945ba), url("/inventario2.jpg") center / cover no-repeat;
     filter: blur(9px);
   }
 
   @media (max-width: 639px) {
     .company-banner {
-      background-image: linear-gradient(100deg, #302029f2, #302029c7), url("/inventario.jpg");
+      background-image: linear-gradient(100deg, #263945f2, #263945c7), url("/inventario2.jpg");
     }
   }
 }

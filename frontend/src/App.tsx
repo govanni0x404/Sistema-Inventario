@@ -1,5 +1,5 @@
 import { lazy, type ReactElement } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { NegocioProvider } from "./context/NegocioContext";
 import { SidebarProvider } from "./context/SidebarContext";
@@ -8,7 +8,6 @@ import { navItems, tieneAcceso } from "./components/nav-data";
 import RequireAuth from "./components/RequireAuth";
 import RequireSeccion from "./components/RequireSeccion";
 import RequireAdmin from "./components/RequireAdmin";
-import AccessDenied from "./components/AccessDenied";
 import AppLayout from "./components/AppLayout";
 import LoginPage from "./pages/LoginPage";
 
@@ -60,10 +59,30 @@ const pages = {
   "/auditoria": <AuditoriaPage />,
 } satisfies Record<(typeof navItems)[number]["to"], ReactElement>;
 
-function Inicio() {
+function DashboardInicio() {
   const { usuario } = useAuth();
-  const pagina = navItems.find((item) => tieneAcceso(usuario, item));
-  return pagina ? <Navigate to={pagina.to} replace /> : <AccessDenied />;
+  if (tieneAcceso(usuario, { seccion: "dashboard" })) return <DashboardPage />;
+
+  const accesos = navItems.filter((item) => tieneAcceso(usuario, item));
+  return (
+    <section className="rounded-xl border bg-card p-4 sm:p-5">
+      <h1 className="font-display text-2xl font-bold">Dashboard</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {accesos.length ? "Elige una sección disponible para tu rol." : "Pide a un administrador que habilite las secciones para tu rol."}
+      </p>
+      {accesos.length > 0 && (
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {accesos.map(({ to, label, icon: Icon }) => (
+            <li key={to}>
+              <Link to={to} className="flex items-center gap-2 rounded-lg border px-3 py-3 text-sm font-medium hover:bg-accent">
+                <Icon size={18} aria-hidden="true" /> {label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 export default function App() {
@@ -77,12 +96,12 @@ export default function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/configuracion-inicial" element={<Navigate to="/login" replace />} />
                 <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-                  <Route index element={<Inicio />} />
+                  <Route index element={<Navigate to="/dashboard" replace />} />
                   {navItems.map((item) => (
                     <Route
                       key={item.to}
                       path={item.to}
-                      element={"adminOnly" in item
+                      element={item.to === "/dashboard" ? <DashboardInicio /> : "adminOnly" in item
                         ? <RequireAdmin>{pages[item.to]}</RequireAdmin>
                         : <RequireSeccion seccion={item.seccion}>{pages[item.to]}</RequireSeccion>}
                     />

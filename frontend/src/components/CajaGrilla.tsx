@@ -1,11 +1,10 @@
-import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Minus, Percent, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { money } from "@/lib/format";
+import { moneyCaja as money } from "@/lib/format";
 
 type Linea = {
-  productoId: string;
+  id: string;
   nombre: string;
   codigo: string;
   cantidad: number;
@@ -16,20 +15,21 @@ type Linea = {
   descuentoEnCentavos: number;
 };
 
-export default function CajaGrilla({ filas, bloqueada, cambiarCantidad, cambiarDescuento, quitar }: {
+export default function CajaGrilla({ filas, bloqueada, editarDescuento, descuentosActivos, cambiarCantidad, quitar }: {
   filas: Linea[];
   bloqueada: boolean;
   cambiarCantidad: (id: string, delta: number) => void;
-  cambiarDescuento: (id: string, valor: string) => void;
+  editarDescuento: (id: string) => void;
+  descuentosActivos: boolean;
   quitar: (id: string) => void;
 }) {
   return (
     <section aria-label="Productos de la venta" tabIndex={0} className="min-h-0 flex-1 overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2">
       <table className="w-full min-w-[38rem] text-sm">
-        <TableHeader className="sticky top-0 z-10 bg-muted">
+        <TableHeader className="sticky top-0 z-10 bg-secondary">
           <TableRow>
-            <TableHead className="pl-4">Producto</TableHead>
-            <TableHead>Código</TableHead>
+            <TableHead className="pl-4">Código</TableHead>
+            <TableHead>Producto</TableHead>
             <TableHead className="text-center">Cantidad</TableHead>
             <TableHead className="text-right">Precio</TableHead>
             <TableHead className="text-right">Descuento</TableHead>
@@ -39,30 +39,31 @@ export default function CajaGrilla({ filas, bloqueada, cambiarCantidad, cambiarD
         </TableHeader>
         <TableBody>
           {filas.map((fila) => (
-            <TableRow key={fila.productoId}>
-              <TableCell className="min-w-36 pl-4 font-semibold whitespace-normal">{fila.nombre}
+            <TableRow key={fila.id}>
+              <TableCell className="pl-4 font-mono text-xs text-muted-foreground">{fila.codigo}</TableCell>
+              <TableCell className="min-w-36 font-semibold whitespace-normal">{fila.nombre}
                 {fila.cantidad > fila.stockMax && <p className="mt-1 text-xs text-destructive">Solo {fila.stockMax} disponibles.</p>}
               </TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{fila.codigo}</TableCell>
               <TableCell>
                 <div className="mx-auto flex w-fit items-center gap-1 rounded-lg border bg-background p-0.5">
                   <Button type="button" size="icon" variant="ghost" className="size-8" disabled={bloqueada || fila.cantidad <= 1}
-                    aria-label={`Restar una unidad de ${fila.nombre}`} onClick={() => cambiarCantidad(fila.productoId, -1)}><Minus size={14} /></Button>
+                    aria-label={`Restar una unidad de ${fila.nombre}`} onClick={() => cambiarCantidad(fila.id, -1)}><Minus size={14} /></Button>
                   <span className="min-w-5 text-center text-sm font-semibold tabular-nums">{fila.cantidad}</span>
                   <Button type="button" size="icon" variant="ghost" className="size-8" disabled={bloqueada || fila.cantidad >= fila.stockMax}
-                    aria-label={`Agregar una unidad de ${fila.nombre}`} onClick={() => cambiarCantidad(fila.productoId, 1)}><Plus size={14} /></Button>
+                    aria-label={`Agregar una unidad de ${fila.nombre}`} onClick={() => cambiarCantidad(fila.id, 1)}><Plus size={14} /></Button>
                 </div>
               </TableCell>
               <TableCell className="text-right tabular-nums">{money(fila.precio)}</TableCell>
-              <TableCell>
-                <Input type="number" min={0} max={fila.brutoEnCentavos / 100} step="0.01" disabled={bloqueada}
-                  aria-label={`Descuento para ${fila.nombre}`} value={fila.descuento || ""} placeholder="0"
-                  onChange={(e) => cambiarDescuento(fila.productoId, e.target.value)} className="ml-auto h-8 w-20 text-right tabular-nums" />
+              <TableCell className="text-right">
+                <Button type="button" variant="ghost" size="sm" disabled={bloqueada || (!descuentosActivos && !fila.descuento)}
+                  aria-label={`Descuento para ${fila.nombre}`} onClick={() => editarDescuento(fila.id)}>
+                  <Percent size={14} /> {money(fila.descuento)}
+                </Button>
               </TableCell>
               <TableCell className="text-right font-semibold tabular-nums">{money((fila.brutoEnCentavos - fila.descuentoEnCentavos) / 100)}</TableCell>
               <TableCell>
                 <Button type="button" size="icon" variant="ghost" className="size-8 text-muted-foreground" disabled={bloqueada}
-                  aria-label={`Quitar ${fila.nombre}`} onClick={() => quitar(fila.productoId)}><Trash2 size={15} /></Button>
+                  aria-label={`Quitar ${fila.nombre}`} onClick={() => quitar(fila.id)}><Trash2 size={15} /></Button>
               </TableCell>
             </TableRow>
           ))}

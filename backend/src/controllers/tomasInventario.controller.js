@@ -5,6 +5,7 @@ const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 
 const MAX_STOCK = 2_147_483_647;
+const MIN_STOCK = -2_147_483_648;
 const cantidad = z.number().int().min(0).max(MAX_STOCK);
 const tomaSchema = z.object({
   id: z.string().uuid(),
@@ -12,7 +13,7 @@ const tomaSchema = z.object({
   motivo: z.string().trim().min(1).max(300),
   items: z.array(z.object({
     productoId: z.string().uuid(),
-    stockEsperado: cantidad,
+    stockEsperado: z.number().int().min(MIN_STOCK).max(MAX_STOCK),
     stockContado: cantidad,
   })).min(1).max(200),
 }).superRefine(({ items, tipo }, ctx) => {
@@ -42,7 +43,11 @@ async function obtener(req, res) {
     where: { id: req.params.tomaId, bodegaId: req.params.id },
   });
   if (!toma) throw new HttpError(404, "Registro de inventario no encontrado");
-  res.json(toma);
+  res.json(serializarToma(toma));
+}
+
+function serializarToma(toma) {
+  return { ...toma, items: toma.items.map(({ sku, codigoBarras = null, ...item }) => ({ ...item, codigoBarras })) };
 }
 
 async function registrar(req, res) {
@@ -81,7 +86,7 @@ async function registrar(req, res) {
     const productos = await tx.producto.findMany({
       where: { id: { in: productoIds } },
       select: {
-        id: true, nombre: true, sku: true, stock: true, unidad: { select: { nombre: true } },
+        id: true, nombre: true, codigoBarras: true, stock: true, unidad: { select: { nombre: true } },
         stockBodegas: { where: { bodegaId }, select: { cantidad: true } },
       },
     });
@@ -90,19 +95,19 @@ async function registrar(req, res) {
       const producto = porId.get(item.productoId);
       const actual = producto.stockBodegas[0]?.cantidad ?? 0;
       if (actual !== item.stockEsperado) {
-        throw new HttpError(409, `Cambió el stock de ${producto.nombre} (${producto.sku}). Actualiza las existencias y vuelve a verificar el conteo.`);
+        throw new HttpError(409, `Cambió el stock de ${producto.nombre}. Actualiza las existencias y vuelve a verificar el conteo.`);
       }
       return {
         ...item,
         nombre: producto.nombre,
-        sku: producto.sku,
+        codigoBarras: producto.codigoBarras,
         unidad: producto.unidad.nombre,
         diferencia: item.stockContado - actual,
       };
     });
     const cambios = detalle.filter(({ diferencia }) => diferencia !== 0).map((item) => {
       const stockTotal = porId.get(item.productoId).stock + item.diferencia;
-      if (stockTotal < 0 || stockTotal > MAX_STOCK) {
+      if (stockTotal < MIN_STOCK || stockTotal > MAX_STOCK || Math.abs(item.diferencia) > MAX_STOCK) {
         throw new HttpError(409, `El ajuste de ${item.nombre} deja el stock total fuera del rango disponible`);
       }
       return { ...item, stockTotal };
@@ -136,7 +141,7 @@ async function registrar(req, res) {
     });
     return creada;
   });
-  res.status(201).json(toma);
+  res.status(201).json(serializarToma(toma));
 }
 
 function existentesIguales(previos, items) {

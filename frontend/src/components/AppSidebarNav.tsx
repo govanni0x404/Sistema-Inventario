@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { matchPath, NavLink, useLocation } from "react-router-dom";
-import { Boxes, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { navGroups, navItems, tieneAcceso } from "./nav-data";
 import { useAuth } from "@/context/AuthContext";
 import { useNegocio } from "@/context/NegocioContext";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { SYSTEM_NAME } from "@/lib/branding";
 import UserMenu from "./UserMenu";
+import ThemeToggle from "./ThemeToggle";
 
 const directPaths: readonly string[] = ["/dashboard", "/caja"];
 const shortcutPaths: readonly string[] = [...directPaths, "/precios", "/productos"];
@@ -75,12 +77,10 @@ export default function AppSidebarNav({
   return (
     <div className="sidebar-photo flex h-full min-h-0 flex-col">
       <div className={cn("flex min-h-24 shrink-0 items-center gap-3 border-b border-white/15 px-5", collapsed && "flex-col justify-center gap-1.5 px-2")}>
-        <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-sidebar-primary text-sidebar-primary-foreground" aria-hidden="true">
-          <Boxes size={20} />
-        </span>
+        <img src="/favicon.svg" alt="" width={36} height={36} className="size-9 shrink-0" />
         <div className={cn("min-w-0 flex-1", collapsed && "sr-only")}>
-          <div className="truncate font-display text-sm font-bold leading-tight">{negocio.nombre}</div>
-          <div className="mt-0.5 truncate text-[11px] text-sidebar-muted">Caja e inventario</div>
+          <div className="truncate font-display text-base font-bold leading-tight">{SYSTEM_NAME}</div>
+          <div className="mt-1 truncate text-xs text-sidebar-muted" title={negocio.nombre}>{negocio.nombre}</div>
         </div>
         {onToggleCollapsed && (
           <button type="button" onClick={onToggleCollapsed} aria-label={collapsed ? "Expandir menú" : "Contraer menú"} aria-expanded={!collapsed}
@@ -90,7 +90,7 @@ export default function AppSidebarNav({
         )}
       </div>
 
-      <nav aria-label="Menú principal" className="flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-color:#b994a180_transparent] [scrollbar-width:thin]">
+      <nav aria-label="Menú principal" className="flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-color:var(--sidebar-border)_transparent] [scrollbar-width:thin]">
         {shortcuts.length > 0 && (
           <ul aria-label="Accesos directos" className="mb-3 space-y-1 border-b border-white/15 pb-3">
             {shortcuts.map((item) => renderLink(item, true))}
@@ -136,8 +136,11 @@ export default function AppSidebarNav({
         })}
       </nav>
 
-      <div className="shrink-0 border-t border-white/15 p-3">
-        <UserMenu collapsed={collapsed} />
+      <div className={cn("flex shrink-0 items-center gap-1 border-t border-white/15 p-2", collapsed && "flex-col")}>
+        <div className="min-w-0 flex-1">
+          <UserMenu collapsed={collapsed} />
+        </div>
+        <ThemeToggle />
       </div>
     </div>
   );

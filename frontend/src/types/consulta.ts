@@ -6,7 +6,7 @@ export interface RangoConsulta {
 export interface ProductoTop {
   productoId: string;
   nombre: string;
-  sku: string;
+  codigoBarras: string | null;
   cantidad: number;
   subtotal: number;
 }
@@ -43,7 +43,7 @@ export interface VentasPorUsuarioResponse {
 export interface ProductoMargen {
   productoId: string;
   nombre: string;
-  sku: string;
+  codigoBarras: string | null;
   cantidad: number;
   ingreso: number;
   costo: number;
@@ -80,7 +80,7 @@ export interface DetallePago extends FilaVenta {
 export interface DetalleProducto extends FilaVenta {
   esCortesia: boolean;
   producto: string;
-  sku: string;
+  codigoBarras: string | null;
   cantidad: number;
   cantidadDevuelta: number;
   subtotal: number;

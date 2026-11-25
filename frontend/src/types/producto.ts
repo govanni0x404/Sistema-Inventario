@@ -25,7 +25,6 @@ interface ParametrosProducto {
 
 export interface Producto extends ParametrosProducto {
   id: string;
-  sku: string;
   codigoBarras: string | null;
   nombre: string;
   categoriaId: string | null;
@@ -48,7 +47,6 @@ export interface Producto extends ParametrosProducto {
 }
 
 export type ProductoInput = {
-  sku: string;
   codigoBarras?: string | null;
   nombre: string;
   categoriaId?: string | null;
@@ -67,7 +65,7 @@ export type ProductoInput = {
 
 export interface ImportarResultadoFila {
   fila: number;
-  sku: string | null;
+  codigoBarras: string | null;
   ok: boolean;
   accion?: "creado" | "actualizado";
   nota?: string;

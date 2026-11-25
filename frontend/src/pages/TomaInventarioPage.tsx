@@ -118,7 +118,7 @@ function InventarioBodega({ bodega }: { bodega: Bodega }) {
     && !cantidadesInvalidas
     && (modo === "inventario" || (items.length === 1 && diferencias === 1));
   const term = normalizeSearch(busqueda);
-  const productos = stock?.filter(({ producto }) => matchesSearch(term, [producto.nombre, producto.sku])) ?? [];
+  const productos = stock?.filter(({ producto }) => matchesSearch(term, [producto.nombre, producto.codigoBarras])) ?? [];
   const paginacion = usePagedList(productos, 12, busqueda);
 
   function limpiarConteo() {
@@ -206,7 +206,7 @@ function InventarioBodega({ bodega }: { bodega: Bodega }) {
             </p>
             <div className="relative max-w-sm">
               <Search size={16} aria-hidden="true" className="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9" aria-label="Buscar producto" placeholder="Buscar por nombre o SKU" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+              <Input className="pl-9" aria-label="Buscar producto" placeholder="Buscar por nombre o código de barras" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
             </div>
             <div className="overflow-hidden rounded-lg border">
               <Table>
@@ -224,7 +224,7 @@ function InventarioBodega({ bodega }: { bodega: Bodega }) {
                       <TableRow key={producto.id}>
                         <TableCell>
                           <div className="font-medium">{producto.nombre}</div>
-                          <div className="font-mono text-xs text-muted-foreground">{producto.sku} · {producto.unidad.nombre}</div>
+                          <div className="font-mono text-xs text-muted-foreground">{[producto.codigoBarras, producto.unidad.nombre].filter(Boolean).join(" · ")}</div>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{formatoCantidad.format(cantidad)}</TableCell>
                         <TableCell>
@@ -307,7 +307,7 @@ function DetalleToma({ detalle, cerrar }: { detalle: TomaInventario | null; cerr
             <TableBody>
               {detalle.items.map((item) => (
                 <TableRow key={item.productoId}>
-                  <TableCell><p>{item.nombre}</p><p className="text-xs text-muted-foreground">{item.sku} · {item.unidad}</p></TableCell>
+                  <TableCell><p>{item.nombre}</p><p className="text-xs text-muted-foreground">{[item.codigoBarras, item.unidad].filter(Boolean).join(" · ")}</p></TableCell>
                   <TableCell className="text-right tabular-nums">{formatoCantidad.format(item.stockEsperado)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatoCantidad.format(item.stockContado)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatoDiferencia.format(item.diferencia)}</TableCell>

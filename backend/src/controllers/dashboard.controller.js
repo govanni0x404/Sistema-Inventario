@@ -9,6 +9,7 @@ async function resumen(req, res) {
   const hoyInicio = inicioDeDia(ahora);
   const hoyFin = finDeDia(ahora);
   const { rangoInicio, rangoFin, dias } = resolverRango(req.query, ahora);
+  const ventasDelRango = { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false };
 
   const [
     ventasHoyAgg,
@@ -17,28 +18,53 @@ async function resumen(req, res) {
     ventasRango,
     ventasPorMetodoRaw,
     itemsTopRaw,
+    ventasPorUsuarioRaw,
+    ventasRecientes,
   ] = await Promise.all([
     prisma.venta.aggregate({ where: { fecha: { gte: hoyInicio, lte: hoyFin }, esCortesia: false }, _sum: { total: true }, _count: true }),
-    prisma.venta.aggregate({ where: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false }, _sum: { total: true }, _count: true }),
+    prisma.venta.aggregate({ where: ventasDelRango, _sum: { total: true }, _count: true }),
     prisma.producto.findMany({
       where: { activo: true },
-      select: { id: true, nombre: true, sku: true, stock: true, stockMinimo: true, precioCompra: true, unidad: { select: { nombre: true } } },
+      select: { id: true, nombre: true, codigoBarras: true, stock: true, stockMinimo: true, precioCompra: true, unidad: { select: { nombre: true } } },
     }),
-    prisma.venta.findMany({ where: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false }, select: { fecha: true, total: true } }),
+    prisma.venta.findMany({ where: ventasDelRango, select: { fecha: true, total: true } }),
     prisma.ventaPago.groupBy({
       by: ["metodoPago"],
-      where: { venta: { fecha: { gte: rangoInicio, lte: rangoFin } } },
+      where: { venta: ventasDelRango },
       _sum: { monto: true },
     }),
     prisma.ventaItem.groupBy({
       by: ["productoId"],
-      where: { venta: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false } },
+      where: { venta: ventasDelRango },
       _sum: { cantidad: true, subtotal: true },
       orderBy: { _sum: { subtotal: "desc" } },
       take: 5,
     }),
+    prisma.venta.groupBy({
+      by: ["usuarioId"],
+      where: ventasDelRango,
+      _sum: { total: true },
+      _count: true,
+      orderBy: [{ _sum: { total: "desc" } }, { usuarioId: "asc" }],
+      take: 8,
+    }),
+    prisma.venta.findMany({
+      where: { fecha: ventasDelRango.fecha },
+      orderBy: [{ fecha: "desc" }, { id: "desc" }],
+      take: 8,
+      select: {
+        id: true, fecha: true, total: true, esCortesia: true,
+        usuario: { select: { nombre: true } },
+        pagos: { select: { metodoPago: true, monto: true } },
+      },
+    }),
   ]);
 
+  const idsUsuarios = ventasPorUsuarioRaw.map((v) => v.usuarioId).filter(Boolean);
+  const usuarios = idsUsuarios.length ? await prisma.usuario.findMany({
+    where: { id: { in: idsUsuarios } }, select: { id: true, nombre: true },
+  }) : [];
+  const nombresUsuarios = new Map(usuarios.map(({ id, nombre }) => [id, nombre]));
   const stockBajo = productos.filter((p) => p.stock <= p.stockMinimo);
   const valorInventario = productos.reduce((s, p) => s + p.stock * Number(p.precioCompra), 0);
 
@@ -61,7 +87,7 @@ async function resumen(req, res) {
   const productosTop = itemsTopRaw.map((it) => ({
     productoId: it.productoId,
     nombre: productoPorId.get(it.productoId)?.nombre ?? "Producto eliminado",
-    sku: productoPorId.get(it.productoId)?.sku ?? "",
+    codigoBarras: productoPorId.get(it.productoId)?.codigoBarras ?? null,
     cantidad: it._sum.cantidad,
     subtotal: Number(it._sum.subtotal),
   }));
@@ -80,6 +106,17 @@ async function resumen(req, res) {
       valorInventario,
     },
     ventasPorDia: [...porDiaMap.values()],
+    ventasPorUsuario: ventasPorUsuarioRaw.map((v) => ({
+      usuarioId: v.usuarioId,
+      nombre: nombresUsuarios.get(v.usuarioId) ?? "Sin usuario",
+      cantidad: v._count,
+      total: Number(v._sum.total || 0),
+    })),
+    ventasRecientes: ventasRecientes.map((v) => ({
+      id: v.id, fecha: v.fecha, usuario: v.usuario?.nombre ?? null,
+      total: Number(v.total), esCortesia: v.esCortesia,
+      pagos: v.pagos.map((p) => ({ metodoPago: p.metodoPago, monto: Number(p.monto) })),
+    })),
     ventasPorMetodo: ventasPorMetodoRaw
       .map((v) => ({ metodoPago: v.metodoPago, total: Number(v._sum.monto || 0) }))
       .sort((a, b) => b.total - a.total),
@@ -87,7 +124,7 @@ async function resumen(req, res) {
     stockBajo: stockBajo
       .sort((a, b) => a.stock - b.stock)
       .slice(0, 6)
-      .map((p) => ({ id: p.id, nombre: p.nombre, sku: p.sku, stock: p.stock, stockMinimo: p.stockMinimo, unidad: p.unidad.nombre })),
+      .map((p) => ({ id: p.id, nombre: p.nombre, codigoBarras: p.codigoBarras, stock: p.stock, stockMinimo: p.stockMinimo, unidad: p.unidad.nombre })),
   });
 }
 

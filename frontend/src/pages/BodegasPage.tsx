@@ -275,7 +275,7 @@ export default function BodegasPage() {
                     <TableRow key={s.id}>
                       <TableCell>
                         <div className="font-body text-sm font-medium text-foreground">{s.producto.nombre}</div>
-                        <div className="font-mono text-xs text-muted-foreground">{s.producto.sku}</div>
+                        <div className="font-mono text-xs text-muted-foreground">{s.producto.codigoBarras ?? ""}</div>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-foreground">
                         {s.cantidad} {s.producto.unidad.nombre}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Clock, Download } from "lucide-react";
 import { turnosApi } from "../api/turnos";
+import { ETIQUETAS_PAGO, type MetodoPago } from "../types/venta";
 import { ApiError } from "../api/client";
 import type { TurnoCaja } from "../types/turno";
 import { useAuth } from "../context/AuthContext";
@@ -176,30 +177,25 @@ export default function TurnosPage() {
                 <div>
                   <div className="font-body text-xs font-medium text-muted-foreground mb-2">Ventas del turno</div>
                   <div className="rounded-xl border border-border divide-y divide-border overflow-hidden font-body text-sm">
-                    <div className="flex justify-between px-3 py-2">
-                      <span className="text-muted-foreground">Efectivo</span>
-                      <span className="font-mono text-foreground">{money(detalle.resumenVentas.porMetodo.efectivo)}</span>
-                    </div>
-                    <div className="flex justify-between px-3 py-2">
-                      <span className="text-muted-foreground">Tarjeta</span>
-                      <span className="font-mono text-foreground">{money(detalle.resumenVentas.porMetodo.tarjeta)}</span>
-                    </div>
-                    <div className="flex justify-between px-3 py-2">
-                      <span className="text-muted-foreground">Transferencia</span>
-                      <span className="font-mono text-foreground">{money(detalle.resumenVentas.porMetodo.transferencia)}</span>
-                    </div>
+                    {Object.entries(detalle.resumenVentas.porMetodo).map(([metodo, monto]) => (
+                      <div key={metodo} className="flex justify-between px-3 py-2">
+                        <span className="text-muted-foreground">{ETIQUETAS_PAGO[metodo as MetodoPago] ?? metodo}</span>
+                        <span className="font-mono text-foreground">{money(monto)}</span>
+                      </div>
+                    ))}
                     <div className="flex justify-between px-3 py-2 font-semibold">
                       <span>Total ({detalle.resumenVentas.cantidadVentas} venta(s))</span>
                       <span className="font-mono">{money(detalle.resumenVentas.total)}</span>
                     </div>
                     {(() => {
                       const d = detalle.resumenVentas.devolucionesPorMetodo;
-                      const totalDev = d ? d.efectivo + d.tarjeta + d.transferencia : 0;
+                      const totalDev = Object.values(d ?? {}).reduce((suma, monto) => suma + monto, 0);
                       if (!d || totalDev <= 0) return null;
+                      const efectivo = d.efectivo ?? 0;
                       return (
                         <div className="flex justify-between px-3 py-2">
                           <span className="text-muted-foreground">
-                            Devoluciones (efectivo {money(d.efectivo)} · otros {money(d.tarjeta + d.transferencia)})
+                            Devoluciones (efectivo {money(efectivo)} · otros {money(totalDev - efectivo)})
                           </span>
                           <span className="font-mono text-destructive">-{money(totalDev)}</span>
                         </div>

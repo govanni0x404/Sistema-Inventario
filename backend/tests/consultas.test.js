@@ -96,6 +96,8 @@ describe("Consultas — márgenes por producto", () => {
 
   test("detalla cada forma de pago y el reembolso, y permite buscar una venta por folio", async () => {
     const authorization = `Bearer ${cajero.token}`;
+    const codigoBarras = "7806543";
+    await prisma.producto.update({ where: { id: producto.id }, data: { codigoBarras } });
     const venta = await request(app)
       .post("/api/ventas")
       .set("Authorization", authorization)
@@ -130,11 +132,11 @@ describe("Consultas — márgenes por producto", () => {
 
     const detalle = await request(app)
       .get("/api/consultas/detalle-productos")
-      .query({ producto: producto.sku.toLowerCase(), folio })
+      .query({ producto: codigoBarras, folio })
       .set("Authorization", authorization);
     expect(detalle.status).toBe(200);
     expect(detalle.body.filas).toEqual([
-      expect.objectContaining({ ventaId: venta.body.id, sku: producto.sku, cantidad: 2, cantidadDevuelta: 1, subtotal: 40 }),
+      expect.objectContaining({ ventaId: venta.body.id, codigoBarras, cantidad: 2, cantidadDevuelta: 1, subtotal: 40 }),
     ]);
   });
 

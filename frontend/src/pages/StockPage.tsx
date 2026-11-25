@@ -50,7 +50,7 @@ export default function StockPage() {
     if (!productos) return [];
     const term = normalizeSearch(q);
     return productos
-      .filter((p) => matchesSearch(term, [p.nombre, p.sku, p.categoria?.nombre, p.codigoBarras]))
+      .filter((p) => matchesSearch(term, [p.nombre, p.categoria?.nombre, p.codigoBarras]))
       .filter((p) => !soloStockBajo || (p.activo && p.stock <= p.stockMinimo));
   }, [productos, q, soloStockBajo]);
 
@@ -61,7 +61,7 @@ export default function StockPage() {
     exportarCsv(
       `stock-${hoyStr()}.csv`,
       filtered.map((p) => ({
-        SKU: p.sku,
+        "Código de barras": p.codigoBarras,
         Nombre: p.nombre,
         Categoría: p.categoria?.nombre ?? "",
         Stock: p.stock,
@@ -84,7 +84,7 @@ export default function StockPage() {
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" aria-label="Buscar productos" placeholder="Buscar producto, SKU, código o categoría" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input className="pl-9" aria-label="Buscar productos" placeholder="Buscar producto, código de barras o familia" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <Button variant={soloStockBajo ? "default" : "outline"} onClick={toggleStockBajo} aria-pressed={soloStockBajo}>
           <AlertTriangle size={14} /> Stock bajo
@@ -129,7 +129,7 @@ export default function StockPage() {
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
-                        <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.sku}</span>
+                        {p.codigoBarras && <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.codigoBarras}</span>}
                         {!p.activo && <Badge variant="secondary">Inactivo</Badge>}
                         {low && (
                           <Badge variant="warning">

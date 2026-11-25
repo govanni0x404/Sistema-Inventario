@@ -10,7 +10,7 @@ export interface PrecioLista {
   listaPrecioId: string;
   productoId: string;
   precio: number;
-  producto: { id: string; nombre: string; sku: string; precioVenta: number };
+  producto: { id: string; nombre: string; codigoBarras: string | null; precioVenta: number };
 }
 
 export type ListaPrecioInput = { nombre: string; copiarPrecios?: boolean };

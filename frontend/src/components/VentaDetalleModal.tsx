@@ -173,7 +173,7 @@ function DetalleVenta({
                         <div className="font-body text-sm text-foreground truncate">{it.producto?.nombre ?? it.productoId}</div>
                         <div className="font-body text-xs text-muted-foreground mt-0.5">
                           {it.cantidad} × {money(it.precioUnitario)}
-                          {it.producto?.sku && <span className="ml-2 font-mono">{it.producto.sku}</span>}
+                          {it.producto?.codigoBarras && <span className="ml-2 font-mono">{it.producto.codigoBarras}</span>}
                           {it.descuento > 0 && <span className="ml-2 text-emerald-600">-{money(it.descuento)} desc.</span>}
                           {devuelto > 0 && (
                             <span className="ml-2 text-destructive">· {devuelto} devuelta{devuelto > 1 ? "s" : ""}</span>

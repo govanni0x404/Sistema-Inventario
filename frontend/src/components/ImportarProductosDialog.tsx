@@ -9,10 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const CAMPOS_ESPERADOS = ["sku", "codigoBarras", "nombre", "categoria", "precioCompra", "precioVenta", "stock", "stockMinimo", "unidad", "proveedor"];
+const CAMPOS_ESPERADOS = ["codigoBarras", "nombre", "categoria", "precioCompra", "precioVenta", "stock", "stockMinimo", "unidad", "proveedor"];
 
 const ALIAS: Record<string, string> = {
-  sku: "sku",
   codigodebarras: "codigoBarras",
   codigobarras: "codigoBarras",
   barcode: "codigoBarras",
@@ -102,8 +101,8 @@ export default function ImportarProductosDialog({ onClose, onImportado }: { onCl
         <DialogHeader>
           <DialogTitle>Importar productos</DialogTitle>
           <DialogDescription>
-            Sube un archivo CSV. Si un SKU ya existe se actualiza (sin tocar el stock); si no, se crea. Columnas
-            reconocidas: {CAMPOS_ESPERADOS.join(", ")}. Solo <strong>sku</strong>, <strong>nombre</strong> y{" "}
+            Sube un archivo CSV. Si el código de barras ya existe, se actualiza el producto y se conserva su stock. Cada código nuevo crea un producto. Columnas
+            reconocidas: {CAMPOS_ESPERADOS.join(", ")}. Solo <strong>codigoBarras</strong>, <strong>nombre</strong> y{" "}
             <strong>precioVenta</strong> son obligatorias.
           </DialogDescription>
         </DialogHeader>
@@ -138,7 +137,7 @@ export default function ImportarProductosDialog({ onClose, onImportado }: { onCl
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>SKU</TableHead>
+                    <TableHead>Código de barras</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead className="text-right">Precio venta</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
@@ -147,7 +146,7 @@ export default function ImportarProductosDialog({ onClose, onImportado }: { onCl
                 <TableBody>
                   {filas.slice(0, 50).map((f, i) => (
                     <TableRow key={i}>
-                      <TableCell className="font-mono text-xs">{String(f.sku ?? "—")}</TableCell>
+                      <TableCell className="font-mono text-xs">{String(f.codigoBarras ?? "—")}</TableCell>
                       <TableCell className="font-body text-sm">{String(f.nombre ?? "—")}</TableCell>
                       <TableCell className="text-right font-mono text-xs">{String(f.precioVenta ?? "—")}</TableCell>
                       <TableCell className="text-right font-mono text-xs">{String(f.stock ?? "0")}</TableCell>
@@ -184,7 +183,7 @@ export default function ImportarProductosDialog({ onClose, onImportado }: { onCl
                         <XCircle size={14} className="text-destructive mt-0.5 shrink-0" />
                       )}
                       <span>
-                        Fila {r.fila} ({r.sku ?? "sin SKU"}): {r.error || r.nota}
+                        Fila {r.fila} ({r.codigoBarras ?? "sin código de barras"}): {r.error || r.nota}
                       </span>
                     </div>
                   ))}

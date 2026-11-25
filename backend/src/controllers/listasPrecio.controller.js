@@ -119,7 +119,7 @@ async function listarPrecios(req, res) {
 
   const precios = await prisma.precioLista.findMany({
     where: { listaPrecioId: req.params.id },
-    include: { producto: { select: { id: true, nombre: true, sku: true, precioVenta: true } } },
+    include: { producto: { select: { id: true, nombre: true, codigoBarras: true, precioVenta: true } } },
     orderBy: { producto: { nombre: "asc" } },
   });
   res.json(precios.map(serializePrecio));
@@ -151,7 +151,7 @@ async function guardarPrecio(req, res) {
       where: { listaPrecioId_productoId: { listaPrecioId: req.params.id, productoId: req.params.productoId } },
       update: { precio: parsed.data.precio },
       create: { listaPrecioId: req.params.id, productoId: req.params.productoId, precio: parsed.data.precio },
-      include: { producto: { select: { id: true, nombre: true, sku: true, precioVenta: true } } },
+      include: { producto: { select: { id: true, nombre: true, codigoBarras: true, precioVenta: true } } },
     });
     await tx.historialPrecioLista.create({
       data: {

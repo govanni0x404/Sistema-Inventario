@@ -69,7 +69,7 @@ describe("Ventas", () => {
     expect(actualizado.stock).toBe(8);
   });
 
-  test("permite pagar con hasta 2 formas de pago cuya suma sea el total", async () => {
+  test("permite combinar más de dos formas de pago cuya suma sea el total", async () => {
     await request(app)
       .post("/api/turnos")
       .set("Authorization", `Bearer ${cajero.token}`)
@@ -80,16 +80,64 @@ describe("Ventas", () => {
       .set("Authorization", `Bearer ${cajero.token}`)
       .send({
         pagos: [
-          { metodoPago: "efectivo", monto: 15 },
-          { metodoPago: "tarjeta", monto: 25 },
+          { metodoPago: "efectivo", monto: 10 },
+          { metodoPago: "debito", monto: 15 },
+          { metodoPago: "transferencia", monto: 15 },
         ],
         items: [{ productoId: producto.id, cantidad: 2 }],
       });
 
     expect(res.status).toBe(201);
     expect(res.body.total).toBe(40);
-    expect(res.body.pagos).toHaveLength(2);
-    expect(res.body.pagos.map((p) => p.monto).sort()).toEqual([15, 25]);
+    expect(res.body.tipoDocumento).toBe("interno");
+    expect(res.body.pagos).toHaveLength(3);
+    expect(res.body.pagos.map((p) => p.monto).sort((a, b) => a - b)).toEqual([10, 15, 15]);
+  });
+
+  test("la configuración permite stock negativo y conserva las líneas separadas", async () => {
+    const auth = { Authorization: `Bearer ${cajero.token}` };
+    const adminAuth = { Authorization: `Bearer ${admin.token}` };
+    const sinStock = await crearProducto({ stock: 0, precioVenta: 20 });
+    await request(app).post("/api/turnos").set(auth).send({ tipoTurnoId: tipoTurno.id, montoInicial: 0 }).expect(201);
+    const payload = {
+      pagos: [{ metodoPago: "debito", monto: 40 }],
+      items: [{ productoId: sinStock.id, cantidad: 1 }, { productoId: sinStock.id, cantidad: 1 }],
+    };
+    await request(app).post("/api/ventas").set(auth).send(payload).expect(409);
+    await request(app).put("/api/negocio").set(adminAuth)
+      .send({ nombre: "Negocio de prueba", venderSinStock: true, agruparProductosCaja: false }).expect(200);
+
+    const { body: venta } = await request(app).post("/api/ventas").set(auth).send(payload).expect(201);
+    expect(venta.items.map((item) => item.cantidad)).toEqual([1, 1]);
+    expect((await prisma.producto.findUnique({ where: { id: sinStock.id } })).stock).toBe(-2);
+    expect((await prisma.stockBodega.findFirst({ where: { productoId: sinStock.id } })).cantidad).toBe(-2);
+    expect(await prisma.movimientoStock.findMany({ where: { ventaId: venta.id }, select: { cantidad: true, stockResultante: true } }))
+      .toEqual([{ cantidad: 2, stockResultante: -2 }]);
+
+    await request(app).post(`/api/ventas/${venta.id}/devolucion`).set(auth)
+      .send({ items: [{ ventaItemId: venta.items[0].id, cantidad: 1 }] }).expect(201);
+    expect((await prisma.producto.findUnique({ where: { id: sinStock.id } })).stock).toBe(-1);
+  });
+
+  test("valida el descuento acumulado y respeta un máximo de cero", async () => {
+    const auth = { Authorization: `Bearer ${cajero.token}` };
+    const adminAuth = { Authorization: `Bearer ${admin.token}` };
+    await request(app).post("/api/turnos").set(auth).send({ tipoTurnoId: tipoTurno.id, montoInicial: 0 }).expect(201);
+    const configurar = (descuentoMaximoCaja) => request(app).put("/api/negocio").set(adminAuth)
+      .send({ nombre: "Negocio de prueba", descuentoMaximoCaja }).expect(200);
+    const vender = (descuento, descuentoLinea) => request(app).post("/api/ventas").set(auth).send({
+      descuento,
+      pagos: [{ metodoPago: "efectivo", monto: 20 - descuento - descuentoLinea }],
+      items: [{ productoId: producto.id, cantidad: 1, descuento: descuentoLinea }],
+    });
+
+    await configurar(50);
+    await vender(6, 5).expect(400);
+    await vender(5, 5).expect(201);
+    await configurar(0);
+    await vender(0, 1).expect(400);
+    await vender(1, 0).expect(400);
+    await vender(0, 0).expect(201);
   });
 
   test("rechaza la venta si las 2 formas de pago son la misma", async () => {

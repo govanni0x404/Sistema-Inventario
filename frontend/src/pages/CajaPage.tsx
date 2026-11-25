@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, PropsWithChildren } from "react";
 import { toast } from "sonner";
-import { Banknote, CheckCircle2, Clock, CreditCard, Inbox, LogOut, Pencil, Printer, Receipt, Send, Settings2, SplitSquareHorizontal, X } from "lucide-react";
+import { Banknote, CheckCircle2, Clock, CreditCard, Gift, Inbox, LogOut, Pencil, Plus, Printer, Receipt, Send, Settings2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { productosApi } from "../api/productos";
 import { clientesApi } from "../api/clientes";
@@ -12,7 +12,8 @@ import { listasPrecioApi } from "../api/listasPrecio";
 import { ApiError } from "../api/client";
 import type { Producto } from "../types/producto";
 import type { Cliente } from "../types/cliente";
-import type { MetodoPago, Venta, VentaInput } from "../types/venta";
+import { ETIQUETAS_PAGO, type MetodoPago, type Venta, type VentaInput } from "../types/venta";
+import { DOCUMENTOS_VENTA, type DocumentoVenta } from "../types/negocio";
 import type { TurnoCaja } from "../types/turno";
 import type { VentaEnEspera } from "../types/ventaEnEspera";
 import type { ListaPrecio } from "../types/listaPrecio";
@@ -27,6 +28,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AbrirTurnoCard from "../components/AbrirTurnoCard";
 import CajaBusqueda from "../components/CajaBusqueda";
 import CajaGrilla from "../components/CajaGrilla";
+import CajaCliente from "../components/CajaCliente";
+import CajaDescuentoDialog from "../components/CajaDescuentoDialog";
 import CerrarTurnoDialog from "../components/CerrarTurnoDialog";
 import VentasEnEsperaDialog from "../components/VentasEnEsperaDialog";
 import MovimientoCajaDialog from "../components/MovimientoCajaDialog";
@@ -34,14 +37,14 @@ import { folioComprobante, printTicket } from "../lib/printTicket";
 import { useNegocio } from "../context/NegocioContext";
 import { useAuth } from "../context/AuthContext";
 import { tieneAcceso } from "../components/nav-data";
-import { aCentavos, LOCALE, money, montoInput } from "../lib/format";
+import { aCentavos, LOCALE, moneyCaja as money, montoInput } from "../lib/format";
 import { matchesSearch, normalizeSearch } from "../lib/search";
 
 
-type CartItem = { productoId: string; nombre: string; precioBase: number; cantidad: number; descuento: number };
+type CartItem = { id: string; productoId: string; nombre: string; precioBase: number; cantidad: number; descuento: number };
 
-const METODOS: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
-const CLIENTE_GENERAL = "__general__";
+const METODOS = ["efectivo", "debito", "credito", "transferencia", "cortesia"] as const;
+type MedioCaja = (typeof METODOS)[number];
 const LISTA_BASE = "__base__";
 const SIN_OVERRIDES: Record<string, number> = {};
 const CLAVE_CAJA = "inventario_caja_actual";
@@ -51,7 +54,7 @@ function CajaLayout({ children, operativa = false }: PropsWithChildren<{ operati
   return (
     <div className={operativa
       ? "caja-vista-fija flex min-h-0 w-full flex-1 flex-col px-2 py-2 sm:px-3 sm:py-3"
-      : "mx-auto w-full max-w-[95rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"}>
+      : "w-full p-2 sm:p-3"}>
       <h1 className={operativa ? "sr-only" : "mb-5 shrink-0 font-display text-3xl leading-tight font-bold tracking-[-0.04em] sm:text-4xl"}>Caja</h1>
       {children}
     </div>
@@ -75,21 +78,28 @@ export default function CajaPage() {
   const [vistaCompacta, setVistaCompacta] = useState<"productos" | "pago">("productos");
   const [carrito, setCarrito] = useState<CartItem[]>([]);
   const [clienteId, setClienteId] = useState("");
-  const [pagos, setPagos] = useState<{ metodoPago: MetodoPago; monto: string }[]>([{ metodoPago: "efectivo", monto: "" }]);
-  const [cortesia, setCortesia] = useState(false);
+  const [pagos, setPagos] = useState<{ metodoPago: MetodoPago; monto: number }[]>([]);
+  const [medio, setMedio] = useState<MedioCaja>("efectivo");
+  const [montoPago, setMontoPago] = useState("");
+  const cortesia = medio === "cortesia";
   const [motivoCortesia, setMotivoCortesia] = useState("");
   const [montoRecibido, setMontoRecibido] = useState("");
   const [pagoExacto, setPagoExacto] = useState(false);
   const [cobrando, setCobrando] = useState(false);
   const cobrandoRef = useRef(false);
   const intentoVenta = useRef<{ firma: string; clave: string } | null>(null);
-  const [descuentoTicket, setDescuentoTicket] = useState("");
-  const [descuentoBorrador, setDescuentoBorrador] = useState<string | null>(null);
+  const [descuentoTicket, setDescuentoTicket] = useState(0);
+  const [descuentoEditado, setDescuentoEditado] = useState<{ lineaId?: string } | null>(null);
+  const [documento, setDocumento] = useState<DocumentoVenta | null>(null);
   const [confirmarAnulacion, setConfirmarAnulacion] = useState(false);
   const [turno, setTurno] = useState<TurnoCaja | null | undefined>(undefined);
   const [mostrarCierre, setMostrarCierre] = useState(false);
   const [comprobante, setComprobante] = useState<{ venta: Venta; vuelto: number } | null>(null);
   const { negocio } = useNegocio();
+  const tipoDocumento = documento ?? negocio.documentoVentaDefecto ?? "interno";
+  const permiteSinStock = negocio.venderSinStock;
+  const agruparProductos = negocio.agruparProductosCaja ?? true;
+  const porcentajeMaximo = negocio.descuentoMaximoCaja ?? 100;
   const { usuario } = useAuth();
   const [mostrarEspera, setMostrarEspera] = useState(false);
   const [movimientoCaja, setMovimientoCaja] = useState<"ingreso" | "retiro" | null>(null);
@@ -149,16 +159,22 @@ export default function CajaPage() {
 
   const disponibles = useMemo(() => (productos ?? []).filter((p) => p.activo && p.ventaPublico !== false), [productos]);
   const porId = useMemo(() => new Map(disponibles.map((p) => [p.id, p])), [disponibles]);
+  const cantidadPorProducto = new Map<string, number>();
+  for (const item of carrito) {
+    cantidadPorProducto.set(item.productoId, (cantidadPorProducto.get(item.productoId) ?? 0) + item.cantidad);
+  }
   const cart = carrito.map((item) => {
     const producto = porId.get(item.productoId);
     const precio = overridePrecios[item.productoId] ?? producto?.precioVenta ?? item.precioBase;
     const brutoEnCentavos = aCentavos(precio) * item.cantidad;
-    const descuentoEnCentavos = Math.min(aCentavos(item.descuento), brutoEnCentavos);
+    const descuentoEnCentavos = Math.min(aCentavos(item.descuento), Math.floor(brutoEnCentavos * porcentajeMaximo / 100));
+    const otrasUnidades = (cantidadPorProducto.get(item.productoId) ?? 0) - item.cantidad;
+    const unidadesDisponibles = producto?.inventariable === false || permiteSinStock ? MAX_CANTIDAD : producto?.stockCaja ?? 0;
     return {
       ...item,
-      codigo: producto?.codigoBarras || producto?.sku || "—",
+      codigo: producto?.codigoBarras || "—",
       precio,
-      stockMax: producto?.inventariable === false ? MAX_CANTIDAD : producto?.stockCaja ?? 0,
+      stockMax: Math.max(0, unidadesDisponibles - otrasUnidades),
       gravado: producto?.tipoImpuesto !== "exento",
       brutoEnCentavos,
       descuentoEnCentavos,
@@ -169,18 +185,17 @@ export default function CajaPage() {
   const results = useMemo(() => {
     const term = normalizeSearch(q);
     if (!term) return [];
-    return disponibles.filter((p) => matchesSearch(term, [p.nombre, p.sku, p.codigoBarras])).slice(0, 8);
+    return disponibles.filter((p) => matchesSearch(term, [p.nombre, p.codigoBarras])).slice(0, 8);
   }, [q, disponibles]);
 
   // Un lector de código de barras escribe rápido y termina con Enter: si el texto coincide
-  // exacto con un código de barras o SKU, se agrega directo sin requerir un clic.
+  // exacto con un código de barras, se agrega directo sin requerir un clic.
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || cobrandoRef.current || listaCargando || listaError) return;
     const term = q.trim();
     if (!term) return;
     const match =
-      disponibles.find((p) => p.codigoBarras === term) ||
-      disponibles.find((p) => p.sku.toLowerCase() === term.toLowerCase());
+      disponibles.find((p) => p.codigoBarras?.toLowerCase() === term.toLowerCase());
     if (match) {
       addToCart(match);
     } else if (results.length === 1) {
@@ -191,107 +206,77 @@ export default function CajaPage() {
   };
 
   const addToCart = (p: Producto) => {
-    const enCarrito = carrito.find((c) => c.productoId === p.id);
-    const disponible = (p.inventariable === false ? MAX_CANTIDAD : p.stockCaja) - (enCarrito?.cantidad ?? 0);
+    const enCarrito = agruparProductos ? carrito.find((c) => c.productoId === p.id) : undefined;
+    const disponible = (p.inventariable === false || permiteSinStock ? MAX_CANTIDAD : p.stockCaja) - (cantidadPorProducto.get(p.id) ?? 0);
     if (disponible <= 0) {
       toast.error("Sin stock disponible");
       return;
     }
     if (enCarrito) {
-      setCarrito(carrito.map((c) => c.productoId === p.id ? { ...c, cantidad: c.cantidad + 1 } : c));
+      setCarrito(carrito.map((c) => c.id === enCarrito.id ? { ...c, cantidad: c.cantidad + 1 } : c));
     } else {
-      setCarrito([...carrito, { productoId: p.id, nombre: p.nombre, precioBase: p.precioVenta, cantidad: 1, descuento: 0 }]);
+      setCarrito([...carrito, { id: nuevaClaveVenta(), productoId: p.id, nombre: p.nombre, precioBase: p.precioVenta, cantidad: 1, descuento: 0 }]);
     }
     setQ("");
   };
 
-  const changeDescuentoItem = (id: string, valor: string) => {
-    setCarrito(
-      cart.map((c) => {
-        if (c.productoId !== id) return c;
-        const descuento = Math.max(0, Math.min(c.brutoEnCentavos, aCentavos(Number(valor) || 0))) / 100;
-        return { ...c, descuento };
-      })
-    );
-  };
-
   const changeQty = (id: string, delta: number) => {
-    const item = cart.find((c) => c.productoId === id);
+    const item = cart.find((c) => c.id === id);
     if (!item) return;
     const cantidad = item.cantidad + delta;
     if (cantidad < 1 || (delta > 0 && cantidad > item.stockMax)) return;
-    const descuento = Math.min(item.descuentoEnCentavos, aCentavos(item.precio) * cantidad) / 100;
-    setCarrito(carrito.map((c) => c.productoId === id ? { ...c, cantidad, descuento } : c));
+    const descuento = Math.min(item.descuentoEnCentavos, Math.floor(aCentavos(item.precio) * cantidad * porcentajeMaximo / 100)) / 100;
+    setCarrito(carrito.map((c) => c.id === id ? { ...c, cantidad, descuento } : c));
   };
-  const removeItem = (id: string) => setCarrito(carrito.filter((c) => c.productoId !== id));
+  const removeItem = (id: string) => setCarrito(carrito.filter((c) => c.id !== id));
 
   const brutoEnCentavos = cart.reduce((s, c) => s + c.brutoEnCentavos, 0);
   const descuentoItemsEnCentavos = cart.reduce((s, c) => s + c.descuentoEnCentavos, 0);
   const subtotalEnCentavos = brutoEnCentavos - descuentoItemsEnCentavos;
-  const descuentoTicketEnCentavos = Math.max(0, Math.min(subtotalEnCentavos, aCentavos(Number(descuentoTicket) || 0)));
+  const limiteDescuento = Math.floor(brutoEnCentavos * porcentajeMaximo / 100);
+  const limiteGlobal = Math.max(0, limiteDescuento - descuentoItemsEnCentavos);
+  const descuentoTicketEnCentavos = Math.min(limiteGlobal, descuentoTicket);
   const totalEnCentavos = subtotalEnCentavos - descuentoTicketEnCentavos;
   const descuentoTicketNum = descuentoTicketEnCentavos / 100;
-  const subtotal = subtotalEnCentavos / 100;
   const total = totalEnCentavos / 100;
-  const totalPago = Math.round(cortesia ? 0 : total);
+  const totalPago = cortesia ? 0 : total;
   const subtotalGravado = cart.reduce((suma, linea) => suma + (linea.gravado ? linea.brutoEnCentavos - linea.descuentoEnCentavos : 0), 0);
-  const iva = subtotalEnCentavos > 0 ? Math.round(totalPago * (subtotalGravado / subtotalEnCentavos) * 19 / 119) : 0;
+  const iva = subtotalEnCentavos > 0 && !cortesia
+    ? Math.round(totalEnCentavos * (subtotalGravado / subtotalEnCentavos) * 19 / 119) / 100 : 0;
   const neto = totalPago - iva;
-
-  const dividido = pagos.length === 2;
-  const montos = dividido ? pagos.map((p) => aCentavos(Number(p.monto) || 0)) : [totalEnCentavos];
-  const sumaPagos = montos.reduce((total, monto) => total + monto, 0);
+  const lineaDescuento = cart.find((item) => item.id === descuentoEditado?.lineaId);
+  const descuentoAcumulado = descuentoItemsEnCentavos + descuentoTicketEnCentavos;
+  const sumaPagos = pagos.reduce((suma, pago) => suma + pago.monto, 0);
+  const saldo = totalEnCentavos - sumaPagos;
+  const montoPropuesto = montoPago === "" ? saldo : aCentavos(Number(montoPago));
   const errorPago = totalEnCentavos <= 0 ? "El total debe ser mayor que cero. Usa cortesía si corresponde."
-    : montos.some((m) => m <= 0) ? "Indica un monto mayor que cero en cada forma de pago."
-    : sumaPagos !== totalEnCentavos ? `Los pagos deben sumar ${money(total)}.`
+    : saldo < 0 ? "Los pagos superan el total. Quita un pago para corregirlo."
+    : saldo > 0 ? `Falta agregar ${money(saldo / 100)} al pago.`
     : null;
   const stockValido = cart.every((c) => c.cantidad <= c.stockMax);
 
-  // Cuánto de la venta se paga en efectivo (para calcular el vuelto). Si no está
-  // dividido y el único método es efectivo, es el total completo.
-  const montoEfectivoVenta = dividido
-    ? Number(pagos.find((p) => p.metodoPago === "efectivo")?.monto) || 0
-    : pagos[0].metodoPago === "efectivo"
-      ? total
-      : 0;
+  const montoEfectivoVenta = (pagos.find((p) => p.metodoPago === "efectivo")?.monto ?? 0) / 100;
   const recibido = pagoExacto ? montoInput(montoEfectivoVenta) : montoRecibido;
   const diferenciaEfectivo = aCentavos(Number(recibido)) - aCentavos(montoEfectivoVenta);
   const efectivoInsuficiente = !cortesia && montoEfectivoVenta > 0 && recibido !== "" && diferenciaEfectivo < 0;
 
-  const setMetodoPago = (idx: 0 | 1, metodoPago: MetodoPago) => {
-    setPagos((prev) => prev.map((p, i) => (i === idx ? { ...p, metodoPago } : p)));
+  const agregarPago = () => {
+    if (medio === "cortesia" || !Number.isFinite(montoPropuesto) || montoPropuesto <= 0 || montoPropuesto > saldo) return;
+    const montoAnterior = pagos.find((p) => p.metodoPago === medio)?.monto ?? 0;
+    setPagos([...pagos.filter((p) => p.metodoPago !== medio), { metodoPago: medio, monto: montoAnterior + montoPropuesto }]);
+    setMontoPago("");
   };
-
-  const setMontoPago = (idx: 0 | 1, valor: string) => {
-    setPagos((prev) => {
-      if (prev.length < 2) return prev;
-      const otro = idx === 0 ? 1 : 0;
-      const ingresado = aCentavos(Number(valor) || 0);
-      const num = Math.max(0, Math.min(totalEnCentavos, ingresado));
-      const siguiente = [...prev];
-      siguiente[idx] = { ...siguiente[idx], monto: num === ingresado ? valor : montoInput(num / 100) };
-      siguiente[otro] = { ...siguiente[otro], monto: montoInput((totalEnCentavos - num) / 100) };
-      return siguiente;
-    });
-  };
-
-  const dividirPago = () => {
-    setPagos((prev) => [
-      { ...prev[0], monto: montoInput(total) },
-      { metodoPago: prev[0].metodoPago === "efectivo" ? "tarjeta" : "efectivo", monto: "0" },
-    ]);
-  };
-
-  const quitarDivision = () => setPagos((prev) => [{ ...prev[0], monto: "" }]);
 
   // "Venta nueva": resetea todo el ticket (carrito, cliente, formas de pago, descuento).
   const resetCompleto = () => {
     setCarrito([]);
     intentoVenta.current = null;
     setClienteId("");
-    setPagos([{ metodoPago: "efectivo", monto: "" }]);
-    setDescuentoTicket("");
-    setCortesia(false);
+    setPagos([]);
+    setMedio("efectivo");
+    setMontoPago("");
+    setDescuentoTicket(0);
+    setDocumento(null);
     setMotivoCortesia("");
     setMontoRecibido("");
     setPagoExacto(false);
@@ -306,6 +291,7 @@ export default function CajaPage() {
         referencia: referenciaEnvio.trim() || null,
         clienteId: clienteId || null,
         descuento: descuentoTicketNum,
+        tipoDocumento,
         items: cart.map((c) => ({ productoId: c.productoId, cantidad: c.cantidad, descuento: c.descuento })),
       });
       resetCompleto();
@@ -324,11 +310,21 @@ export default function CajaPage() {
       toast.info("Guarda o limpia el ticket actual antes de recuperar otra venta.");
       return;
     }
-    const recuperado = v.items.flatMap((it) => {
-      const cantidad = it.producto.inventariable === false ? it.cantidad : Math.min(it.cantidad, it.producto.stockCaja ?? 0);
-      if (!it.producto.activo || it.producto.ventaPublico === false || cantidad <= 0) return [];
-      return [{ productoId: it.productoId, nombre: it.producto.nombre, precioBase: it.producto.precioVenta, cantidad, descuento: it.descuento }];
-    });
+    const recuperado: CartItem[] = [];
+    const recuperadas = new Map<string, number>();
+    for (const it of v.items) {
+      const anteriores = recuperadas.get(it.productoId) ?? 0;
+      const cantidad = it.producto.inventariable === false || permiteSinStock ? it.cantidad : Math.min(it.cantidad, it.producto.stockCaja - anteriores);
+      if (!it.producto.activo || it.producto.ventaPublico === false || cantidad <= 0) continue;
+      const previo = agruparProductos ? recuperado.find((item) => item.productoId === it.productoId) : undefined;
+      if (previo) {
+        previo.cantidad += cantidad;
+        previo.descuento += it.descuento;
+      } else {
+        recuperado.push({ id: it.id, productoId: it.productoId, nombre: it.producto.nombre, precioBase: it.producto.precioVenta, cantidad, descuento: it.descuento });
+      }
+      recuperadas.set(it.productoId, anteriores + cantidad);
+    }
     if (!recuperado.length) {
       toast.error("La venta sigue en espera. Sus productos no tienen stock disponible en caja.");
       return;
@@ -338,7 +334,8 @@ export default function CajaPage() {
       resetCompleto();
       setCarrito(recuperado);
       setClienteId(v.clienteId || "");
-      setDescuentoTicket(v.descuento > 0 ? String(v.descuento) : "");
+      setDescuentoTicket(aCentavos(v.descuento));
+      setDocumento(v.tipoDocumento ?? null);
       setMostrarEspera(false);
       if (recuperado.reduce((suma, it) => suma + it.cantidad, 0) !== v.items.reduce((suma, it) => suma + it.cantidad, 0)) {
         toast.warning("El ticket se ajustó al stock disponible en caja.");
@@ -364,9 +361,10 @@ export default function CajaPage() {
       turnoCajaId: turno.id,
       clienteId: clienteId || null,
       listaPrecioId: listaPrecioId || null,
+      tipoDocumento,
       esCortesia: cortesia,
       motivoCortesia: cortesia ? motivoCortesia.trim() : undefined,
-      pagos: cortesia ? undefined : pagos.map((p, i) => ({ metodoPago: p.metodoPago, monto: montos[i] / 100 })),
+      pagos: cortesia ? undefined : pagos.map((p) => ({ metodoPago: p.metodoPago, monto: p.monto / 100 })),
       descuento: descuentoTicketNum,
       items: cart.map((c) => ({ productoId: c.productoId, cantidad: c.cantidad, descuento: c.descuento })),
     };
@@ -426,10 +424,13 @@ export default function CajaPage() {
 
   return (
     <CajaLayout operativa>
-      <section aria-label="Turno activo" className="mb-2 flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1.5 rounded-lg border bg-card px-3 py-1.5">
-        <p className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">{turno.caja.nombre} · {turno.tipoTurno.nombre}</p>
-        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-          <Clock size={14} className="shrink-0 text-primary" aria-hidden="true" />
+      <section aria-label="Turno activo" className="company-banner mb-3 flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl px-4 py-2.5 text-hero-foreground">
+        <p className="flex min-w-0 items-center gap-2.5 text-sm font-semibold [overflow-wrap:anywhere]">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/15" aria-hidden="true"><Receipt size={17} /></span>
+          {turno.caja.nombre} · {turno.tipoTurno.nombre}
+        </p>
+        <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-md bg-hero/90 px-2.5 py-1.5 text-xs text-hero-muted">
+          <Clock size={14} className="shrink-0" aria-hidden="true" />
           <span>Abierto el <time dateTime={turno.fechaApertura}>{new Date(turno.fechaApertura).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}</time></span>
           {turno.usuarioApertura && <span className="[overflow-wrap:anywhere]">· {turno.usuarioApertura.nombre}</span>}
         </p>
@@ -442,11 +443,11 @@ export default function CajaPage() {
           aria-pressed={vistaCompacta === "pago"} onClick={() => setVistaCompacta("pago")}>Pago y opciones</Button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,27%)]">
         <div className={cn("min-h-0 min-w-0 flex-col gap-2 xl:flex", vistaCompacta === "productos" ? "flex" : "hidden")}>
           <div className="grid min-w-0 shrink-0 items-start gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(11rem,13rem)]">
             <CajaBusqueda productos={disponibles} resultados={results} texto={q} alBuscar={setQ}
-              alTecla={handleSearchKeyDown} agregar={addToCart} precio={precioEfectivo} bloqueado={cobrando || listaCargando || listaError} />
+              alTecla={handleSearchKeyDown} agregar={addToCart} precio={precioEfectivo} permiteSinStock={permiteSinStock} bloqueado={cobrando || listaCargando || listaError} />
             <Select value={listaPrecioId || LISTA_BASE} disabled={cobrando}
               onValueChange={(v) => { setPreciosLista(null); setListaPrecioId(v === LISTA_BASE ? "" : v); }}>
               <SelectTrigger aria-label="Lista de precios" className="w-full bg-card data-[size=default]:h-11"><SelectValue /></SelectTrigger>
@@ -466,13 +467,16 @@ export default function CajaPage() {
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
             <CajaGrilla filas={cart} bloqueada={cobrando || listaCargando || listaError}
-              cambiarCantidad={changeQty} cambiarDescuento={changeDescuentoItem} quitar={removeItem} />
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t bg-muted/25 px-3 py-2 sm:px-4">
+              cambiarCantidad={changeQty} descuentosActivos={porcentajeMaximo > 0} editarDescuento={(lineaId) => setDescuentoEditado({ lineaId })} quitar={removeItem} />
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t bg-secondary/50 px-3 py-2 sm:px-4">
               <div className="flex items-center gap-2.5">
                 <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary" aria-hidden="true"><Receipt size={18} /></span>
                 <div>
-                  <p className="text-xs text-muted-foreground">Tipo de documento</p>
-                  <p className="text-sm font-semibold">Comprobante interno</p>
+                  <Label htmlFor="caja-documento" className="mb-1 text-xs text-muted-foreground">Documento de venta</Label>
+                  <Select value={tipoDocumento} disabled={cobrando} onValueChange={(valor) => setDocumento(valor as DocumentoVenta)}>
+                    <SelectTrigger id="caja-documento" size="sm" className="w-full bg-card"><SelectValue /></SelectTrigger>
+                    <SelectContent>{Object.entries(DOCUMENTOS_VENTA).map(([id, nombre]) => <SelectItem key={id} value={id}>{nombre}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -482,8 +486,8 @@ export default function CajaPage() {
                   {descuentoTicketEnCentavos > 0 && <p className="text-xs text-muted-foreground">Descuento global {money(descuentoTicketNum)}</p>}
                 </div>
                 <Button type="button" variant="outline" size="icon" aria-label="Editar descuento global" title="Editar descuento global"
-                  disabled={cobrando || !cart.length || listaCargando || listaError}
-                  onClick={() => setDescuentoBorrador(descuentoTicketNum ? montoInput(descuentoTicketNum) : "")}><Pencil size={16} /></Button>
+                  disabled={cobrando || !cart.length || listaCargando || listaError || (porcentajeMaximo === 0 && !descuentoTicket)}
+                  onClick={() => setDescuentoEditado({})}><Pencil size={16} /></Button>
               </div>
             </div>
           </div>
@@ -498,55 +502,63 @@ export default function CajaPage() {
           <TabsContent value="pago" className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border bg-card shadow-sm data-[state=active]:flex data-[state=active]:flex-col">
             <fieldset disabled={cobrando} className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
               <legend className="sr-only">Pago de la venta</legend>
-              <dl className="space-y-2 rounded-xl border bg-muted/45 p-3 text-sm">
-                <div className="flex justify-between gap-2 text-muted-foreground"><dt>Neto estimado</dt><dd className="tabular-nums">{money(neto)}</dd></div>
-                <div className="flex justify-between gap-2 text-muted-foreground"><dt>IVA estimado (19 % incluido)</dt><dd className="tabular-nums">{money(iva)}</dd></div>
-                <div className="flex items-baseline justify-between gap-2 border-t pt-2 font-semibold">
-                  <dt>Total a cobrar</dt><dd className="font-display text-2xl font-bold tabular-nums">{money(totalPago)}</dd>
+              <CajaCliente clientes={clientes} clienteId={clienteId} seleccionar={setClienteId} puedeCrear={tieneAcceso(usuario, { seccion: "clientes" })}
+                creado={(cliente) => { setClientes((actual) => [...actual, cliente]); setClienteId(cliente.id); }} />
+
+              <dl className="space-y-2 rounded-xl bg-hero p-4 text-sm text-hero-foreground">
+                {descuentoAcumulado > 0 && (
+                  <>
+                    <div className="flex justify-between gap-2 text-hero-muted"><dt>Antes del descuento</dt><dd>{money(brutoEnCentavos / 100)}</dd></div>
+                    <div className="flex justify-between gap-2 text-hero-muted"><dt>Descuento</dt><dd>−{money(descuentoAcumulado / 100)}</dd></div>
+                  </>
+                )}
+                <div className="flex justify-between gap-2 text-hero-muted"><dt>Neto</dt><dd className="tabular-nums">{money(neto)}</dd></div>
+                <div className="flex justify-between gap-2 text-hero-muted"><dt>IVA</dt><dd className="tabular-nums">{money(iva)}</dd></div>
+                <div className="flex items-baseline justify-between gap-2 border-t border-white/20 pt-2 font-semibold">
+                  <dt>{descuentoAcumulado > 0 && !cortesia ? "Total con descuento" : "Total"}</dt>
+                  <dd className="font-display text-3xl font-bold tabular-nums">{money(totalPago)}</dd>
                 </div>
-                {cortesia && <div className="flex justify-between gap-2 text-xs text-muted-foreground"><dt>Valor de referencia</dt><dd>{money(total)}</dd></div>}
+                {cortesia && <div className="flex justify-between gap-2 text-xs text-hero-muted"><dt>Valor de referencia</dt><dd>{money(total)}</dd></div>}
               </dl>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="caja-cliente">Cliente</Label>
-                <Select value={clienteId || CLIENTE_GENERAL} onValueChange={(v) => setClienteId(v === CLIENTE_GENERAL ? "" : v)} disabled={cobrando}>
-                  <SelectTrigger id="caja-cliente" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={CLIENTE_GENERAL}>Cliente general</SelectItem>
-                    {clientes.map((cliente) => <SelectItem key={cliente.id} value={cliente.id}>{cliente.nombre}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-2">
+                <p id="caja-formas-pago" className="text-sm font-semibold">Forma de pago</p>
+                <div role="group" aria-labelledby="caja-formas-pago" className="grid grid-cols-2 gap-2 min-[500px]:grid-cols-3">
+                  {METODOS.map((metodo) => (
+                    <Button key={metodo} type="button" size="sm" className="justify-start px-2.5"
+                      variant={medio === metodo ? "default" : "outline"} aria-pressed={medio === metodo} onClick={() => setMedio(metodo)}>
+                      {metodo === "cortesia" ? <Gift size={15} /> : metodo === "efectivo" ? <Banknote size={15} /> : <CreditCard size={15} />}
+                      {metodo === "cortesia" ? "Cortesía" : ETIQUETAS_PAGO[metodo]}
+                    </Button>
+                  ))}
+                </div>
               </div>
-
-              <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                <input type="checkbox" checked={cortesia} onChange={(e) => setCortesia(e.target.checked)} className="size-4 accent-primary" />
-                Venta de cortesía
-              </label>
               {cortesia && <Input aria-label="Motivo de la cortesía" value={motivoCortesia}
                 onChange={(e) => setMotivoCortesia(e.target.value)} placeholder="Motivo de la cortesía (obligatorio)" />}
 
               {!cortesia && (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium">Forma de pago</p>
-                  {pagos.map((pago, idx) => (
-                    <div key={idx} className="space-y-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="grid min-w-0 flex-1 grid-cols-3 gap-1.5">
-                          {METODOS.map((metodo) => (
-                            <Button type="button" key={metodo} size="sm" variant={pago.metodoPago === metodo ? "default" : "outline"}
-                              disabled={dividido && pagos[idx === 0 ? 1 : 0]?.metodoPago === metodo}
-                              aria-pressed={pago.metodoPago === metodo} onClick={() => setMetodoPago(idx as 0 | 1, metodo)}
-                              className="min-w-0 px-1 text-xs capitalize">{metodo}</Button>
-                          ))}
-                        </div>
-                        {idx === 1 && <Button type="button" variant="ghost" size="icon" className="size-8" onClick={quitarDivision} aria-label="Quitar segunda forma de pago"><X size={14} /></Button>}
-                      </div>
-                      {dividido && <Input type="number" min={0} max={total} step="0.01" aria-label={`Monto del pago ${idx + 1}`}
-                        value={pago.monto} onChange={(e) => setMontoPago(idx as 0 | 1, e.target.value)} className="text-right tabular-nums" />}
-                    </div>
-                  ))}
-                  {!dividido && <Button type="button" variant="ghost" size="sm" onClick={dividirPago} disabled={!cart.length} className="px-2 text-xs">
-                    <SplitSquareHorizontal size={14} /> Dividir pago</Button>}
+                  <div className="space-y-2">
+                    <Label htmlFor="caja-monto-pago">Monto en {ETIQUETAS_PAGO[medio].toLowerCase()}</Label>
+                    <Input id="caja-monto-pago" type="number" min={0} step="0.01" inputMode="decimal" value={montoPago}
+                      placeholder={montoInput(Math.max(0, saldo) / 100)} disabled={saldo <= 0}
+                      onChange={(e) => setMontoPago(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") agregarPago(); }}
+                      className="text-right tabular-nums" />
+                    <Button type="button" variant="outline" className="w-full border-primary/35 bg-secondary text-secondary-foreground"
+                      disabled={!Number.isFinite(montoPropuesto) || montoPropuesto <= 0 || montoPropuesto > saldo} onClick={agregarPago}><Plus size={16} /> Agregar al pago</Button>
+                  </div>
+                  {!!pagos.length && (
+                    <ul aria-label="Pagos agregados" className="divide-y rounded-lg border bg-muted/40 px-3">
+                      {pagos.map((pago) => (
+                        <li key={pago.metodoPago} className="flex items-center gap-2 py-1 text-sm">
+                          <span className="flex-1">{ETIQUETAS_PAGO[pago.metodoPago]}</span>
+                          <strong className="tabular-nums">{money(pago.monto / 100)}</strong>
+                          <Button type="button" variant="ghost" size="icon" className="size-8" aria-label={`Quitar pago en ${ETIQUETAS_PAGO[pago.metodoPago]}`}
+                            onClick={() => { setPagos(pagos.filter((item) => item.metodoPago !== pago.metodoPago)); setMontoPago(""); }}><X size={15} /></Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {montoEfectivoVenta > 0 && (
                     <div className="space-y-2 border-t pt-3">
                       <Label htmlFor="caja-recibido">Efectivo recibido</Label>
@@ -562,7 +574,7 @@ export default function CajaPage() {
                       {recibido && diferenciaEfectivo >= 0 && <p className="text-right text-sm font-semibold text-primary">Vuelto {money(diferenciaEfectivo / 100)}</p>}
                     </div>
                   )}
-                  {cart.length > 0 && errorPago && <p role="status" className="text-xs text-destructive">{errorPago}</p>}
+                  {cart.length > 0 && errorPago && <p role="status" className={cn("text-xs", saldo < 0 ? "text-destructive" : "text-muted-foreground")}>{errorPago}</p>}
                   {efectivoInsuficiente && <p role="status" className="text-xs text-destructive">El efectivo recibido es menor que el monto a cobrar en efectivo.</p>}
                 </div>
               )}
@@ -608,29 +620,26 @@ export default function CajaPage() {
         </Tabs>
       </div>
 
-      <Dialog open={descuentoBorrador !== null} onOpenChange={(open) => !open && setDescuentoBorrador(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Descuento global</DialogTitle>
-            <DialogDescription>Subtotal después de descuentos por producto: {money(subtotal)}.</DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={(event) => {
-            event.preventDefault();
-            setDescuentoTicket(descuentoBorrador ?? "");
-            setDescuentoBorrador(null);
-          }}>
-            <div className="space-y-1.5">
-              <Label htmlFor="caja-descuento">Monto del descuento</Label>
-              <Input autoFocus id="caja-descuento" type="number" min={0} max={subtotal} step="0.01"
-                value={descuentoBorrador ?? ""} onChange={(e) => setDescuentoBorrador(e.target.value)} placeholder="0" />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDescuentoBorrador(null)}>Cancelar</Button>
-              <Button type="submit">Aplicar descuento</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {descuentoEditado && (
+        <CajaDescuentoDialog
+          titulo={lineaDescuento ? `Descuento de ${lineaDescuento.nombre}` : "Descuento global"}
+          base={lineaDescuento?.brutoEnCentavos ?? subtotalEnCentavos}
+          actual={lineaDescuento?.descuentoEnCentavos ?? descuentoTicketEnCentavos}
+          maximo={lineaDescuento ? Math.max(0, Math.min(
+            Math.floor(lineaDescuento.brutoEnCentavos * porcentajeMaximo / 100),
+            limiteDescuento - descuentoAcumulado + lineaDescuento.descuentoEnCentavos,
+          )) : limiteGlobal}
+          cerrar={() => setDescuentoEditado(null)}
+          aplicar={(centavos) => {
+            if (lineaDescuento) {
+              setCarrito(carrito.map((item) => item.id === lineaDescuento.id ? { ...item, descuento: centavos / 100 } : item));
+            } else {
+              setDescuentoTicket(centavos);
+            }
+            setDescuentoEditado(null);
+          }}
+        />
+      )}
 
       <Dialog open={confirmarAnulacion} onOpenChange={setConfirmarAnulacion}>
         <DialogContent className="sm:max-w-sm">

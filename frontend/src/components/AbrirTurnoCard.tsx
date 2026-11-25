@@ -49,7 +49,7 @@ export default function AbrirTurnoCard({ onAbierto }: { onAbierto: (turno: Turno
   const cajas = opciones && opciones !== "error" ? opciones.cajas : [];
   const tipos = opciones && opciones !== "error" ? opciones.tipos : [];
   const caja = cajaId ? cajas.find((item) => item.id === cajaId) : cajas[0];
-  const tipo = tipoTurnoId || (tipos.length === 1 ? tipos[0].id : "");
+  const tipo = tipos.some((item) => item.id === tipoTurnoId) ? tipoTurnoId : "";
   const turnoAbierto = caja?.turnoAbierto;
   const continuar = Boolean(turnoAbierto);
   const datosEmpresa = [

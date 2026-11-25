@@ -50,7 +50,7 @@ export default function MovimientoForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="p-3 rounded-lg bg-muted font-body text-xs text-muted-foreground">
-        <span className="text-foreground font-medium">{producto.nombre}</span> <span className="font-mono">{producto.sku}</span>
+        <span className="text-foreground font-medium">{producto.nombre}</span> <span className="font-mono">{producto.codigoBarras}</span>
         <div className="mt-0.5">
           Stock actual: <span className="font-mono text-foreground">{producto.stock}</span> {producto.unidad.nombre}
         </div>

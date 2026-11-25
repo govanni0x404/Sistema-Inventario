@@ -44,7 +44,7 @@ export default function PreciosPage() {
   const filtered = useMemo(() => {
     if (!productos) return [];
     const term = q.toLowerCase();
-    return productos.filter((p) => (p.nombre + p.sku + (p.categoria?.nombre || "")).toLowerCase().includes(term));
+    return productos.filter((p) => (p.nombre + " " + (p.codigoBarras ?? "") + " " + (p.categoria?.nombre || "")).toLowerCase().includes(term));
   }, [productos, q]);
 
   const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, q);
@@ -98,7 +98,7 @@ export default function PreciosPage() {
     <div>
       <div className="relative mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Buscar por nombre, SKU o categoría" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input className="pl-9" placeholder="Buscar por nombre, código de barras o familia" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
       {loadError && (
@@ -142,7 +142,7 @@ export default function PreciosPage() {
                             className={cn("text-muted-foreground transition-transform shrink-0", expanded === p.id && "rotate-180")}
                           />
                           <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
-                          <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.sku}</span>
+                          {p.codigoBarras && <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.codigoBarras}</span>}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm text-muted-foreground">{money(p.precioCompra)}</TableCell>

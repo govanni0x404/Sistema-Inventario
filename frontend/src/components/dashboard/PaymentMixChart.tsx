@@ -1,6 +1,6 @@
 import { LOCALE, money } from "@/lib/format";
 
-const colors = ["var(--primary)", "#d29b42", "#3d9c8d", "#a487c8", "#cb7863"];
+const colors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 const percent = new Intl.NumberFormat(LOCALE, { style: "percent", maximumFractionDigits: 1 });
 
 export default function PaymentMixChart({ payments }: { payments: { metodoPago: string; total: number }[] }) {

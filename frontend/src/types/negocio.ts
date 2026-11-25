@@ -1,3 +1,6 @@
+export const DOCUMENTOS_VENTA = { interno: "Comprobante interno" } as const;
+export type DocumentoVenta = keyof typeof DOCUMENTOS_VENTA;
+
 export interface Negocio {
   nombre: string;
   rut: string | null;
@@ -6,6 +9,10 @@ export interface Negocio {
   telefono: string | null;
   email: string | null;
   mensajeTicket: string | null;
+  venderSinStock: boolean;
+  agruparProductosCaja: boolean;
+  documentoVentaDefecto: DocumentoVenta;
+  descuentoMaximoCaja: number;
 }
 
 export type NegocioInput = Partial<Negocio> & { nombre: string };

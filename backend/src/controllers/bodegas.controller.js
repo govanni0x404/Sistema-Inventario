@@ -40,7 +40,7 @@ async function stockDeBodega(req, res) {
 
   const stocks = await prisma.stockBodega.findMany({
     where: { bodegaId: req.params.id },
-    include: { producto: { select: { id: true, nombre: true, sku: true, unidad: { select: { nombre: true } } } } },
+    include: { producto: { select: { id: true, nombre: true, codigoBarras: true, unidad: { select: { nombre: true } } } } },
     orderBy: { producto: { nombre: "asc" } },
   });
 

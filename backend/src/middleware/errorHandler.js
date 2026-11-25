@@ -9,7 +9,7 @@ function errorHandler(err, req, res, next) {
     return res.status(404).json({ error: "Registro no encontrado" });
   }
   if (err.code === "P2002") {
-    // Violación de un campo único (SKU, código de barras, email, nombre…).
+    // Violación de un campo único (código de barras, email, nombre…).
     const campos = Array.isArray(err.meta?.target) ? err.meta.target.join(", ") : err.meta?.target;
     return res.status(409).json({ error: `Ya existe un registro con ese valor${campos ? ` (${campos})` : ""}` });
   }

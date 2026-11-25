@@ -3,9 +3,8 @@ import { Outlet, useLocation, useMatch } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { navItems } from "./nav-data";
 import { useSidebar } from "@/context/SidebarContext";
-import { useNegocio } from "@/context/NegocioContext";
+import { SYSTEM_NAME } from "@/lib/branding";
 import AppSidebarNav from "./AppSidebarNav";
-import ThemeToggle from "./ThemeToggle";
 import VersionFooter from "./VersionFooter";
 import CommandPalette from "./CommandPalette";
 import { Button } from "@/components/ui/button";
@@ -35,15 +34,14 @@ export default function AppLayout() {
   const isDashboard = useMatch("/dashboard") !== null;
   const isCaja = useMatch("/caja") !== null;
   const isProductos = useMatch("/productos") !== null;
-  const { negocio } = useNegocio();
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const pageTitle = navItems.find((item) => item.to === pathname)?.label ?? "Tu espacio de trabajo";
 
   useEffect(() => {
-    document.title = `${pageTitle} | ${negocio.nombre}`;
-    return () => { document.title = "Caja e Inventario"; };
-  }, [pageTitle, negocio.nombre]);
+    document.title = `${pageTitle} | ${SYSTEM_NAME}`;
+    return () => { document.title = SYSTEM_NAME; };
+  }, [pageTitle]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -77,23 +75,15 @@ export default function AppLayout() {
         </SheetContent>
       </Sheet>
 
-      <div className="group/workspace relative flex min-h-dvh min-w-0 flex-1 flex-col has-[.caja-vista-fija]:h-dvh has-[.caja-vista-fija]:overflow-hidden">
-        <header className="sticky top-0 z-30 flex h-11 shrink-0 items-center justify-end border-b border-border bg-card/95 px-3 backdrop-blur group-has-[.cash-opening]/workspace:pointer-events-none group-has-[.cash-opening]/workspace:absolute group-has-[.cash-opening]/workspace:inset-x-0 group-has-[.cash-opening]/workspace:border-0 group-has-[.cash-opening]/workspace:bg-transparent group-has-[.cash-opening]/workspace:backdrop-blur-none sm:px-4">
-          <div className="pointer-events-auto rounded-lg group-has-[.cash-opening]/workspace:bg-card/90 group-has-[.cash-opening]/workspace:shadow-sm">
-            <ThemeToggle />
-          </div>
-        </header>
-
+      <div className="app-workspace group/workspace relative flex min-h-dvh min-w-0 flex-1 flex-col has-[.caja-vista-fija]:h-dvh has-[.caja-vista-fija]:overflow-hidden">
         <main id="contenido-principal" tabIndex={-1} className={cn(
-          "w-full flex-1 outline-none",
-          isCaja ? "flex min-h-0 flex-col"
-            : isProductos ? "flex min-w-0 flex-col px-2 py-3 sm:px-4 lg:py-4"
-            : "mx-auto max-w-[95rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
+          "w-full min-w-0 flex-1 outline-none",
+          isCaja ? "flex min-h-0 flex-col" : "flex flex-col p-2 sm:p-3",
         )}>
           {!isDashboard && !isCaja && (
-            <h1 className="mb-5 font-display text-3xl leading-tight font-bold tracking-[-0.04em] text-foreground sm:text-4xl">{pageTitle}</h1>
+            <h1 className="mb-3 border-l-4 border-primary px-3 py-1 font-display text-3xl leading-tight font-bold tracking-[-0.04em] text-foreground">{pageTitle}</h1>
           )}
-          <div className={isCaja || isProductos ? "flex min-h-0 min-w-0 flex-1 flex-col" : isDashboard ? undefined : "min-w-0 rounded-xl border border-border bg-card p-4 sm:p-6"}>
+          <div className={cn("min-w-0 flex-1", (isCaja || isProductos) && "flex min-h-0 flex-col", !isCaja && !isProductos && !isDashboard && "rounded-xl border bg-card p-3 shadow-sm sm:p-4")}>
             <ErrorDeSeccion key={pathname}>
               <Suspense fallback={<p role="status" className="py-6 text-sm text-muted-foreground">Cargando sección…</p>}>
                 <Outlet />

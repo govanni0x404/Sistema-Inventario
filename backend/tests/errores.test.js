@@ -52,6 +52,34 @@ describe("Errores claros en vez de 500", () => {
     ]);
   });
 
+  test("el dashboard cruza ventas recientes, vendedores y pagos del período", async () => {
+    const fecha = new Date("2026-04-04T15:00:00Z");
+    const usuarioId = admin.usuario.id;
+    const pagada = await prisma.venta.create({
+      data: { fecha, total: 5000, usuarioId, pagos: { create: [
+        { metodoPago: "efectivo", monto: 2000 }, { metodoPago: "tarjeta", monto: 3000 },
+      ] } },
+    });
+    const cortesia = await prisma.venta.create({
+      data: { fecha: new Date(fecha.getTime() + 1000), total: 0, usuarioId, esCortesia: true },
+    });
+    await prisma.venta.create({ data: { fecha: new Date("2026-04-07T15:00:00Z"), total: 9000, usuarioId } });
+
+    const res = await request(app).get("/api/dashboard?desde=2026-04-03&hasta=2026-04-06").set(auth()).expect(200);
+    expect(res.body.ventasPorUsuario).toEqual([{ usuarioId, nombre: admin.usuario.nombre, cantidad: 1, total: 5000 }]);
+    expect(res.body.ventasPorMetodo).toEqual([{ metodoPago: "tarjeta", total: 3000 }, { metodoPago: "efectivo", total: 2000 }]);
+    expect(res.body.ventasRecientes).toEqual([
+      expect.objectContaining({ id: cortesia.id, esCortesia: true, pagos: [] }),
+      expect.objectContaining({ id: pagada.id, total: 5000, pagos: expect.arrayContaining([{ metodoPago: "tarjeta", monto: 3000 }, { metodoPago: "efectivo", monto: 2000 }]) }),
+    ]);
+  });
+
+  test("el dashboard protege las métricas cuando el rol no tiene permiso", async () => {
+    const cajero = await crearUsuario();
+    await prisma.rolPermiso.create({ data: { rolId: cajero.usuario.rolId, seccion: "dashboard", permitido: false } });
+    await request(app).get("/api/dashboard").set("Authorization", `Bearer ${cajero.token}`).expect(403);
+  });
+
   test("una venta en espera con un producto que no existe responde 400, no 500", async () => {
     const res = await request(app)
       .post("/api/ventas-en-espera")
