@@ -1,6 +1,6 @@
 const request = require("supertest");
 const app = require("../src/app");
-const { prisma, resetDb, crearUsuario, crearProducto, crearBodegaPrincipal } = require("./helpers");
+const { prisma, stockDeProducto, resetDb, crearUsuario, crearProducto, crearBodegaPrincipal } = require("./helpers");
 
 describe("Ficha de producto", () => {
   beforeEach(async () => {
@@ -70,7 +70,8 @@ describe("Productos: eliminar", () => {
     await prisma.$disconnect();
   });
 
-  test("sin ventas: se borra físicamente (204)", async () => {
+  test("sin historia y sin stock: se borra físicamente (204)", async () => {
+    await prisma.stockBodega.updateMany({ where: { productoId: producto.id }, data: { cantidad: 0 } });
     const res = await request(app)
       .delete(`/api/productos/${producto.id}`)
       .set("Authorization", `Bearer ${admin.token}`);
@@ -79,12 +80,23 @@ describe("Productos: eliminar", () => {
     expect(await prisma.producto.findUnique({ where: { id: producto.id } })).toBeNull();
   });
 
+  test("con stock o con movimientos de stock: se desactiva en vez de borrarse", async () => {
+    const conStock = await request(app).delete(`/api/productos/${producto.id}`).set("Authorization", `Bearer ${admin.token}`);
+    expect(conStock.status).toBe(200);
+    expect(conStock.body._desactivado).toBe(true);
+
+    const otro = await crearProducto({ stock: 0 });
+    await prisma.movimientoStock.create({ data: { productoId: otro.id, tipo: "entrada", cantidad: 1, stockResultante: 1 } });
+    const conKardex = await request(app).delete(`/api/productos/${otro.id}`).set("Authorization", `Bearer ${admin.token}`);
+    expect(conKardex.status).toBe(200);
+    expect(await prisma.producto.findUnique({ where: { id: otro.id } })).toMatchObject({ activo: false });
+  });
+
   test("con ventas: se desactiva y responde _desactivado", async () => {
     await prisma.venta.create({
       data: {
-        subtotal: 10,
         total: 10,
-        items: { create: [{ productoId: producto.id, cantidad: 1, precioUnitario: 10, subtotal: 10 }] },
+        items: { create: [{ productoId: producto.id, cantidad: 1, precioUnitario: 10 }] },
       },
     });
 
@@ -141,7 +153,7 @@ describe("Productos: importar", () => {
     expect(Number(actual.precioCompra)).toBe(12);
     expect(actual.stockMinimo).toBe(7);
     expect(actual.codigoBarras).toBe("7801234");
-    expect(actual.stock).toBe(producto.stock);
+    expect(await stockDeProducto(producto.id)).toBe(producto.stock);
   });
 
   test("un cambio de precio por importación queda en el historial de precios", async () => {
@@ -169,7 +181,7 @@ describe("Productos: importar", () => {
     const creado = await prisma.producto.findUnique({ where: { codigoBarras: "7803333" }, include: { stockBodegas: true } });
     expect(Number(creado.precioCompra)).toBe(0);
     expect(creado.stockMinimo).toBe(0);
-    expect(creado.stock).toBe(4);
+    expect(await stockDeProducto(creado.id)).toBe(4);
     expect(creado.stockBodegas.reduce((s, b) => s + b.cantidad, 0)).toBe(4);
   });
 });

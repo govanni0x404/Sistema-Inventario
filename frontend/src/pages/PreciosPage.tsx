@@ -137,11 +137,24 @@ export default function PreciosPage() {
                     <TableRow className="cursor-pointer" onClick={() => toggleExpand(p)}>
                       <TableCell>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <ChevronDown
-                            size={14}
-                            className={cn("text-muted-foreground transition-transform shrink-0", expanded === p.id && "rotate-180")}
-                          />
-                          <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 rounded text-left hover:text-primary focus-visible:underline"
+                            aria-expanded={expanded === p.id}
+                            aria-controls={`precio-historial-${p.id}`}
+                            aria-label={`${expanded === p.id ? "Ocultar" : "Ver"} historial de precios de ${p.nombre}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpand(p);
+                            }}
+                          >
+                            <ChevronDown
+                              size={14}
+                              aria-hidden="true"
+                              className={cn("text-muted-foreground transition-transform shrink-0", expanded === p.id && "rotate-180")}
+                            />
+                            <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
+                          </button>
                           {p.codigoBarras && <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.codigoBarras}</span>}
                         </div>
                       </TableCell>
@@ -164,7 +177,7 @@ export default function PreciosPage() {
                       </TableCell>
                     </TableRow>
                     {expanded === p.id && (
-                      <TableRow className="hover:bg-transparent">
+                      <TableRow id={`precio-historial-${p.id}`} className="hover:bg-transparent">
                         <TableCell colSpan={5} className="bg-muted/40 whitespace-normal py-3">
                           <div className="font-body text-xs font-medium mb-2 text-muted-foreground">Historial de cambios de precio</div>
                           {historialCargando && <div className="font-body text-xs text-muted-foreground">Cargando…</div>}

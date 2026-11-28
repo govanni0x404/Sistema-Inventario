@@ -7,6 +7,7 @@ import { SYSTEM_NAME } from "@/lib/branding";
 import AppSidebarNav from "./AppSidebarNav";
 import VersionFooter from "./VersionFooter";
 import CommandPalette from "./CommandPalette";
+import PageHeader from "./PageHeader";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -36,7 +37,8 @@ export default function AppLayout() {
   const isProductos = useMatch("/productos") !== null;
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const pageTitle = navItems.find((item) => item.to === pathname)?.label ?? "Tu espacio de trabajo";
+  const navItem = navItems.find((item) => item.to === pathname);
+  const pageTitle = navItem?.label ?? "Tu espacio de trabajo";
 
   useEffect(() => {
     document.title = `${pageTitle} | ${SYSTEM_NAME}`;
@@ -78,12 +80,18 @@ export default function AppLayout() {
       <div className="app-workspace group/workspace relative flex min-h-dvh min-w-0 flex-1 flex-col has-[.caja-vista-fija]:h-dvh has-[.caja-vista-fija]:overflow-hidden">
         <main id="contenido-principal" tabIndex={-1} className={cn(
           "w-full min-w-0 flex-1 outline-none",
-          isCaja ? "flex min-h-0 flex-col" : "flex flex-col p-2 sm:p-3",
+          isCaja ? "flex min-h-0 flex-col" : "flex flex-col p-3 sm:p-5 lg:px-6",
         )}>
           {!isDashboard && !isCaja && (
-            <h1 className="mb-3 border-l-4 border-primary px-3 py-1 font-display text-3xl leading-tight font-bold tracking-[-0.04em] text-foreground">{pageTitle}</h1>
+            <PageHeader
+              className="mb-4 px-1 sm:mb-5"
+              title={pageTitle}
+              eyebrow={navItem?.group}
+              description={navItem?.description}
+              icon={navItem?.icon}
+            />
           )}
-          <div className={cn("min-w-0 flex-1", (isCaja || isProductos) && "flex min-h-0 flex-col", !isCaja && !isProductos && !isDashboard && "rounded-xl border bg-card p-3 shadow-sm sm:p-4")}>
+          <div className={cn("min-w-0 flex-1", (isCaja || isProductos) && "flex min-h-0 flex-col", !isCaja && !isProductos && !isDashboard && "relative rounded-2xl border border-border/80 bg-card p-4 shadow-card before:pointer-events-none before:absolute before:inset-x-6 before:-top-px before:rounded-b-full before:h-[3px] before:bg-linear-to-r before:from-primary before:to-brand-2 sm:p-6")}>
             <ErrorDeSeccion key={pathname}>
               <Suspense fallback={<p role="status" className="py-6 text-sm text-muted-foreground">Cargando sección…</p>}>
                 <Outlet />
@@ -91,7 +99,7 @@ export default function AppLayout() {
             </ErrorDeSeccion>
           </div>
         </main>
-        <div className="sticky bottom-0 z-20 flex shrink-0 items-center justify-between border-t bg-background px-3 group-has-[.cash-opening]/workspace:pointer-events-none group-has-[.cash-opening]/workspace:absolute group-has-[.cash-opening]/workspace:inset-x-0 group-has-[.cash-opening]/workspace:border-0 group-has-[.cash-opening]/workspace:bg-transparent group-has-[.cash-opening]/workspace:pb-2 md:static md:justify-end md:px-4">
+        <div className="sticky bottom-0 z-20 flex shrink-0 items-center justify-between border-t bg-background/80 px-3 backdrop-blur-sm group-has-[.cash-opening]/workspace:pointer-events-none group-has-[.cash-opening]/workspace:absolute group-has-[.cash-opening]/workspace:inset-x-0 group-has-[.cash-opening]/workspace:border-0 group-has-[.cash-opening]/workspace:bg-transparent group-has-[.cash-opening]/workspace:pb-2 md:static md:justify-end md:px-4">
           <Button variant="ghost" size="sm" className="pointer-events-auto group-has-[.cash-opening]/workspace:bg-card/90 md:hidden" onClick={() => setMobileOpen(true)} aria-haspopup="dialog" aria-expanded={mobileOpen}>
             <Menu size={16} /> Menú
           </Button>

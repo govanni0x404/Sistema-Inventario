@@ -73,6 +73,9 @@ async function eliminar(req, res) {
   if (tieneProductos) {
     throw new HttpError(409, "No se puede eliminar: el proveedor tiene productos asociados");
   }
+  if (await prisma.ordenCompra.findFirst({ where: { proveedorId: existente.id }, select: { id: true } })) {
+    throw new HttpError(409, "No se puede eliminar: el proveedor tiene órdenes de compra");
+  }
 
   await prisma.proveedor.delete({ where: { id: req.params.id } });
   res.status(204).send();

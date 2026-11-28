@@ -10,90 +10,134 @@
   --font-body: "Inter", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
 
-  --background: #f1f3f4;
-  --foreground: #202b32;
+  --background: #f3f6fa;
+  --foreground: #172630;
 
   --card: #ffffff;
   --card-foreground: var(--foreground);
   --popover: #ffffff;
   --popover-foreground: var(--foreground);
 
-  --primary: #285972;
+  --primary: #0e6e8c;
   --primary-foreground: #ffffff;
 
-  --secondary: #e3ebef;
-  --secondary-foreground: #24485b;
+  --secondary: #e4eef4;
+  --secondary-foreground: #0f4a5e;
 
-  --muted: #e9edef;
-  --muted-foreground: #52606a;
+  --muted: #eef2f6;
+  --muted-foreground: #556673;
 
-  --accent: #dce8ed;
-  --accent-foreground: #24485b;
+  --accent: #e0eff5;
+  --accent-foreground: #0f4a5e;
 
-  --destructive: #b54a2c;
+  --destructive: #c0392b;
   --destructive-foreground: #ffffff;
 
-  --border: #d4dce0;
-  --input: #bfcbd1;
-  --ring: #3b7995;
+  /* Acentos semánticos */
+  --brand-2: #f59e0b;
+  --brand-2-foreground: #2a1a02;
+  --success: #15703a;
+  --success-foreground: #ffffff;
+  --warning: #a34a07;
+  --warning-foreground: #ffffff;
+  --info: #4f46e5;
+  --info-foreground: #ffffff;
+
+  --border: #dde4ea;
+  --input: #c5d1da;
+  --ring: #0e6e8c;
 
   --chart-1: var(--primary);
-  --chart-2: #a36543;
-  --chart-3: #36746e;
-  --chart-4: #7c6960;
-  --chart-5: #637b91;
+  --chart-2: #e08a00;
+  --chart-3: #0e8f6c;
+  --chart-4: #7c3aed;
+  --chart-5: #db2777;
 
-  --sidebar: #25343d;
-  --sidebar-foreground: #f6f9fa;
-  --sidebar-muted: #cbd7de;
-  --sidebar-primary: #abd2e4;
-  --sidebar-primary-foreground: #162c38;
-  --sidebar-accent: #37576a;
+  /* Degradado de marca: siempre legible con texto blanco */
+  --brand-gradient-from: var(--primary);
+  --brand-gradient-blend: var(--chart-3);
+
+  /* Elevación */
+  --elevation-card: 0 1px 2px rgb(15 38 52 / 0.05), 0 4px 16px -6px rgb(15 38 52 / 0.12);
+  --elevation-card-hover: 0 2px 4px rgb(15 38 52 / 0.06), 0 14px 30px -10px rgb(14 110 140 / 0.28);
+
+  --sidebar: #13232d;
+  --sidebar-foreground: #f3f8fa;
+  --sidebar-muted: #b9cbd5;
+  --sidebar-primary: #7dd3ee;
+  --sidebar-primary-foreground: #062430;
+  --sidebar-accent: #1d3c4c;
   --sidebar-accent-foreground: var(--sidebar-foreground);
-  --sidebar-border: #465964;
+  --sidebar-border: #2c4553;
   --sidebar-ring: var(--sidebar-primary);
-  --hero: #263945;
+  --hero: #14303d;
   --hero-foreground: #f6f9fa;
-  --hero-muted: #d4e0e6;
-  --access-photo-tint: #26394524;
+  --hero-muted: #cfe1e9;
+  --access-photo-tint: #0e2a3824;
 }
 
 .dark {
-  --background: #171f25;
-  --foreground: #edf3f6;
+  --background: #0f171d;
+  --foreground: #e8f0f5;
 
-  --card: #222e36;
-  --popover: var(--card);
+  --card: #18232b;
+  --card-foreground: var(--foreground);
+  --popover: #18232b;
+  --popover-foreground: var(--foreground);
 
-  --primary: #a6d0e5;
-  --primary-foreground: #162c38;
+  --primary: #5cc8e6;
+  --primary-foreground: #06222c;
 
-  --secondary: #304551;
-  --secondary-foreground: #d7eaf3;
+  --secondary: #22323d;
+  --secondary-foreground: #d3e9f2;
 
-  --muted: #2c3942;
-  --muted-foreground: #b8c8d1;
+  --muted: #1f2c35;
+  --muted-foreground: #9fb2bf;
 
-  --accent: #354c59;
-  --accent-foreground: #d7eaf3;
+  --accent: #213a48;
+  --accent-foreground: #d3e9f2;
 
-  --destructive: #e2795e;
-  --destructive-foreground: #180a06;
+  --destructive: #f08a6c;
+  --destructive-foreground: #1f0a04;
 
-  --border: #3c4d58;
-  --input: #526773;
-  --ring: #a6d0e5;
+  --brand-2: #fbbf24;
+  --brand-2-foreground: #1a0f00;
+  --success: #4ade80;
+  --success-foreground: #052e14;
+  --warning: #fbbf24;
+  --warning-foreground: #1a0f00;
+  --info: #a5b4fc;
+  --info-foreground: #1e1b4b;
 
-  --chart-2: #d8a084;
-  --chart-3: #7cbdb3;
-  --chart-4: #bfaea3;
-  --chart-5: #a0b1cb;
+  --border: #2b3b46;
+  --input: #3a4d5a;
+  --ring: #5cc8e6;
 
-  --sidebar: #1d2931;
-  --sidebar-accent: #304d5e;
-  --sidebar-border: #3a4b55;
-  --hero: #1d303b;
-  --access-photo-tint: #14212c66;
+  --chart-1: var(--primary);
+  --chart-2: #fbbf24;
+  --chart-3: #34d399;
+  --chart-4: #a78bfa;
+  --chart-5: #f472b6;
+
+  --brand-gradient-from: #0b6580;
+  --brand-gradient-blend: #0b7a5c;
+
+  --elevation-card: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.35), 0 6px 18px -8px rgb(0 0 0 / 0.55);
+  --elevation-card-hover: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 2px 4px rgb(0 0 0 / 0.4), 0 16px 34px -12px rgb(92 200 230 / 0.22);
+
+  --sidebar: #0b141a;
+  --sidebar-foreground: #f3f8fa;
+  --sidebar-muted: #b9cbd5;
+  --sidebar-primary: #7dd3ee;
+  --sidebar-primary-foreground: #062430;
+  --sidebar-accent: #1a3442;
+  --sidebar-accent-foreground: var(--sidebar-foreground);
+  --sidebar-border: #233a47;
+  --sidebar-ring: var(--sidebar-primary);
+  --hero: #102833;
+  --hero-foreground: #f6f9fa;
+  --hero-muted: #cfe1e9;
+  --access-photo-tint: #0a1a2466;
 }
 
 @theme inline {
@@ -125,6 +169,17 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-brand-2: var(--brand-2);
+  --color-brand-2-foreground: var(--brand-2-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --shadow-card: var(--elevation-card);
+  --shadow-card-hover: var(--elevation-card-hover);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -150,7 +205,15 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground font-body;
+    @apply bg-background text-foreground font-body antialiased;
+    font-feature-settings: "cv11", "ss01", "ss03";
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 24%, transparent);
   }
   :root {
     color-scheme: light;
@@ -162,7 +225,22 @@
 
 @layer components {
   .app-workspace {
-    background: linear-gradient(165deg, color-mix(in srgb, var(--primary) 9%, var(--background)), var(--background) 24rem);
+    background-color: var(--background);
+    background-image:
+      radial-gradient(48rem 26rem at 100% -6rem, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%),
+      radial-gradient(36rem 22rem at -4rem -4rem, color-mix(in srgb, var(--brand-2) 8%, transparent), transparent 70%);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+
+  .brand-gradient {
+    background-color: var(--brand-gradient-from);
+    background-image: linear-gradient(135deg, var(--brand-gradient-from), color-mix(in srgb, var(--brand-gradient-from) 55%, var(--brand-gradient-blend)));
+    color: #ffffff;
+  }
+
+  .accent-line {
+    background-image: linear-gradient(90deg, var(--primary), color-mix(in srgb, var(--primary) 50%, var(--brand-2)) 60%, var(--brand-2));
   }
 
   .access-page {
@@ -170,7 +248,7 @@
   }
 
   .access-brand {
-    background: linear-gradient(155deg, #213745a8, #142631f5 80%), url("/inventario2.jpg") 32% center / cover no-repeat, var(--hero);
+    background: linear-gradient(155deg, #0e4f66b0, #0a2330f5 80%), url("/inventario2.jpg") 32% center / cover no-repeat, var(--hero);
   }
 
   .sidebar-photo {
@@ -196,11 +274,11 @@
   .sidebar-photo::after {
     inset: 0;
     z-index: -1;
-    background: linear-gradient(155deg, #21323de8, #182631cf 48%, #202e37eb);
+    background: linear-gradient(160deg, #0f2733f0, #0c1d27d9 48%, #0b1820f2);
   }
 
   .company-banner {
-    background: linear-gradient(90deg, #182b37fa, #263945d9 53%, #23394766), url("/inventario2.jpg") center 55% / cover no-repeat, var(--hero);
+    background: linear-gradient(100deg, #0a2430f7, #0d4357db 52%, #0e6e8c5c), url("/inventario2.jpg") center 55% / cover no-repeat, var(--hero);
   }
 
   .cash-opening {
@@ -221,7 +299,13 @@
 
   @media (max-width: 639px) {
     .company-banner {
-      background-image: linear-gradient(100deg, #263945f2, #263945c7), url("/inventario2.jpg");
+      background-image: linear-gradient(100deg, #0a2430f2, #0d4357d1), url("/inventario2.jpg");
     }
   }
+}
+
+@utility money {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }

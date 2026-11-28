@@ -1,7 +1,7 @@
 const { randomUUID } = require("node:crypto");
 const request = require("supertest");
 const app = require("../src/app");
-const { prisma, resetDb, crearUsuario, crearProducto, crearTipoTurno, crearBodegaPrincipal } = require("./helpers");
+const { prisma, stockDeProducto, resetDb, crearUsuario, crearProducto, crearTipoTurno, crearBodegaPrincipal } = require("./helpers");
 
 describe("Ventas", () => {
   let cajero, admin, producto, tipoTurno;
@@ -41,7 +41,7 @@ describe("Ventas", () => {
     await request(app).post(`/api/ventas/${venta.id}/devolucion`).set(auth)
       .send({ items: [{ ventaItemId: venta.items[0].id, cantidad: 1 }] }).expect(201);
     expect(await prisma.movimientoStock.count({ where: { productoId: servicio.id } })).toBe(0);
-    expect((await prisma.producto.findUnique({ where: { id: servicio.id } })).stock).toBe(0);
+    expect(await stockDeProducto(servicio.id)).toBe(0);
   });
 
   test("crea la venta, descuenta stock y aplica descuentos por item y por ticket", async () => {
@@ -65,8 +65,7 @@ describe("Ventas", () => {
     expect(res.body.descuento).toBe(5);
     expect(res.body.total).toBe(32);
 
-    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
-    expect(actualizado.stock).toBe(8);
+    expect(await stockDeProducto(producto.id)).toBe(8);
   });
 
   test("permite combinar más de dos formas de pago cuya suma sea el total", async () => {
@@ -109,14 +108,14 @@ describe("Ventas", () => {
 
     const { body: venta } = await request(app).post("/api/ventas").set(auth).send(payload).expect(201);
     expect(venta.items.map((item) => item.cantidad)).toEqual([1, 1]);
-    expect((await prisma.producto.findUnique({ where: { id: sinStock.id } })).stock).toBe(-2);
+    expect(await stockDeProducto(sinStock.id)).toBe(-2);
     expect((await prisma.stockBodega.findFirst({ where: { productoId: sinStock.id } })).cantidad).toBe(-2);
     expect(await prisma.movimientoStock.findMany({ where: { ventaId: venta.id }, select: { cantidad: true, stockResultante: true } }))
       .toEqual([{ cantidad: 2, stockResultante: -2 }]);
 
     await request(app).post(`/api/ventas/${venta.id}/devolucion`).set(auth)
       .send({ items: [{ ventaItemId: venta.items[0].id, cantidad: 1 }] }).expect(201);
-    expect((await prisma.producto.findUnique({ where: { id: sinStock.id } })).stock).toBe(-1);
+    expect(await stockDeProducto(sinStock.id)).toBe(-1);
   });
 
   test("valida el descuento acumulado y respeta un máximo de cero", async () => {
@@ -187,8 +186,7 @@ describe("Ventas", () => {
 
     expect(res.status).toBe(400);
     expect(await prisma.venta.count()).toBe(0);
-    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
-    expect(actualizado.stock).toBe(10);
+    expect(await stockDeProducto(producto.id)).toBe(10);
   });
 
   test("los reintentos simultáneos y posteriores al cierre recuperan la venta original", async () => {
@@ -216,8 +214,7 @@ describe("Ventas", () => {
     const distinta = await cobrar({ ...body, pagos: [{ metodoPago: "tarjeta", monto: 20 }] });
     expect(distinta.status).toBe(409);
     expect(await prisma.venta.count()).toBe(1);
-    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
-    expect(actualizado.stock).toBe(9);
+    expect(await stockDeProducto(producto.id)).toBe(9);
   });
 
   test("rechaza la venta si el descuento del ticket excede el subtotal", async () => {
@@ -268,8 +265,7 @@ describe("Ventas", () => {
 
     expect(devolucion.status).toBe(201);
 
-    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
-    expect(actualizado.stock).toBe(8); // 10 - 3 vendidas + 1 devuelta
+    expect(await stockDeProducto(producto.id)).toBe(8); // 10 - 3 vendidas + 1 devuelta
 
     // Solo quedan 2 disponibles para devolver (3 vendidas - 1 ya devuelta); pedir 5 debe fallar.
     const exceso = await request(app)
@@ -300,8 +296,7 @@ describe("Ventas", () => {
     expect(res.body.pagos).toHaveLength(0);
     expect(res.body.total).toBe(40);
 
-    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
-    expect(actualizado.stock).toBe(8);
+    expect(await stockDeProducto(producto.id)).toBe(8);
   });
 
   test("rechaza una venta de cortesía sin motivo", async () => {

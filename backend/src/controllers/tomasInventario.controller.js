@@ -3,10 +3,12 @@ const { Prisma } = require("@prisma/client");
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { bloquearProductos } = require("../lib/stockBodega");
 
 const MAX_STOCK = 2_147_483_647;
 const MIN_STOCK = -2_147_483_648;
 const cantidad = z.number().int().min(0).max(MAX_STOCK);
+const detalleOrdenado = { items: { orderBy: { posicion: "asc" } } };
 const tomaSchema = z.object({
   id: z.string().uuid(),
   tipo: z.enum(["inventario", "ajuste"]),
@@ -32,22 +34,34 @@ async function listar(req, res) {
     take: 20,
     select: {
       id: true, bodegaId: true, bodegaNombre: true, usuarioNombre: true,
-      tipo: true, motivo: true, fecha: true, lineas: true, ajustes: true,
+      tipo: true, motivo: true, fecha: true,
+      items: { select: { stockEsperado: true, stockContado: true } },
     },
   });
-  res.json(tomas);
+  res.json(tomas.map(({ items, ...toma }) => ({ ...toma, ...resumen(items) })));
 }
 
 async function obtener(req, res) {
   const toma = await prisma.tomaInventario.findUnique({
     where: { id: req.params.tomaId, bodegaId: req.params.id },
+    include: detalleOrdenado,
   });
   if (!toma) throw new HttpError(404, "Registro de inventario no encontrado");
   res.json(serializarToma(toma));
 }
 
-function serializarToma(toma) {
-  return { ...toma, items: toma.items.map(({ sku, codigoBarras = null, ...item }) => ({ ...item, codigoBarras })) };
+function resumen(items) {
+  return { lineas: items.length, ajustes: items.filter((it) => it.stockContado !== it.stockEsperado).length };
+}
+
+function serializarToma({ items, ...toma }) {
+  return {
+    ...toma, ...resumen(items),
+    items: items.map(({ productoReferencia, nombre, codigoBarras, unidad, stockEsperado, stockContado }) => ({
+      productoId: productoReferencia, nombre, codigoBarras, unidad, stockEsperado, stockContado,
+      diferencia: stockContado - stockEsperado,
+    })),
+  };
 }
 
 async function registrar(req, res) {
@@ -62,9 +76,9 @@ async function registrar(req, res) {
   const productoIds = items.map(({ productoId }) => productoId);
   const toma = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`toma-inventario:${id}`}, 0))::text`;
-    const existente = await tx.tomaInventario.findUnique({ where: { id } });
+    const existente = await tx.tomaInventario.findUnique({ where: { id }, include: detalleOrdenado });
     if (existente) {
-      const previos = new Map(existente.items.map((item) => [item.productoId, item]));
+      const previos = new Map(existente.items.map((item) => [item.productoReferencia, item]));
       const coincide = existente.bodegaId === bodegaId && existente.usuarioId === usuarioId
         && existente.tipo === tipo && existente.motivo === motivo && existentesIguales(previos, items);
       if (!coincide) throw new HttpError(409, "Ese código ya corresponde a otra operación de inventario");
@@ -72,10 +86,7 @@ async function registrar(req, res) {
     }
 
     // Caja y transferencias también bloquean el producto antes de cambiar sus existencias.
-    const bloqueados = await tx.$queryRaw`
-      SELECT "id" FROM "productos" WHERE "id" IN (${Prisma.join(productoIds)})
-      ORDER BY "id" COLLATE "C" FOR NO KEY UPDATE
-    `;
+    const bloqueados = await bloquearProductos(tx, productoIds);
     if (bloqueados.length !== items.length) throw new HttpError(404, "Uno o más productos ya no existen");
     const [bodega] = await tx.$queryRaw`
       SELECT "nombre", "activo" FROM "bodegas" WHERE "id" = ${bodegaId} FOR SHARE
@@ -86,14 +97,14 @@ async function registrar(req, res) {
     const productos = await tx.producto.findMany({
       where: { id: { in: productoIds } },
       select: {
-        id: true, nombre: true, codigoBarras: true, stock: true, unidad: { select: { nombre: true } },
-        stockBodegas: { where: { bodegaId }, select: { cantidad: true } },
+        id: true, nombre: true, codigoBarras: true, unidad: { select: { nombre: true } },
+        stockBodegas: { select: { bodegaId: true, cantidad: true } },
       },
     });
     const porId = new Map(productos.map((producto) => [producto.id, producto]));
     const detalle = items.map((item) => {
       const producto = porId.get(item.productoId);
-      const actual = producto.stockBodegas[0]?.cantidad ?? 0;
+      const actual = producto.stockBodegas.find((stock) => stock.bodegaId === bodegaId)?.cantidad ?? 0;
       if (actual !== item.stockEsperado) {
         throw new HttpError(409, `Cambió el stock de ${producto.nombre}. Actualiza las existencias y vuelve a verificar el conteo.`);
       }
@@ -106,7 +117,7 @@ async function registrar(req, res) {
       };
     });
     const cambios = detalle.filter(({ diferencia }) => diferencia !== 0).map((item) => {
-      const stockTotal = porId.get(item.productoId).stock + item.diferencia;
+      const stockTotal = porId.get(item.productoId).stockBodegas.reduce((total, stock) => total + stock.cantidad, item.diferencia);
       if (stockTotal < MIN_STOCK || stockTotal > MAX_STOCK || Math.abs(item.diferencia) > MAX_STOCK) {
         throw new HttpError(409, `El ajuste de ${item.nombre} deja el stock total fuera del rango disponible`);
       }
@@ -116,17 +127,14 @@ async function registrar(req, res) {
     const creada = await tx.tomaInventario.create({
       data: {
         id, bodegaId, bodegaNombre: bodega.nombre, tipo, motivo, usuarioId, usuarioNombre: req.user.nombre,
-        lineas: detalle.length, ajustes: cambios.length, items: detalle,
+        items: { create: detalle.map(({ diferencia, productoId, ...item }, indice) => ({
+          ...item, posicion: indice + 1, productoReferencia: productoId,
+        })) },
       },
+      include: detalleOrdenado,
     });
     if (cambios.length === 0) return creada;
 
-    await tx.$executeRaw`
-      UPDATE "productos" AS p
-      SET "stock" = v.stock, "actualizadoEn" = CURRENT_TIMESTAMP
-      FROM (VALUES ${Prisma.join(cambios.map(({ productoId, stockTotal }) => Prisma.sql`(${productoId}, ${stockTotal}::int)`))}) AS v(id, stock)
-      WHERE p."id" = v.id
-    `;
     await tx.$executeRaw`
       INSERT INTO "stock_bodega" ("id", "bodegaId", "productoId", "cantidad")
       VALUES ${Prisma.join(cambios.map(({ productoId, stockContado }) => Prisma.sql`(${randomUUID()}, ${bodegaId}, ${productoId}, ${stockContado}::int)`))}

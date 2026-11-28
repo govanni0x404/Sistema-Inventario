@@ -1,5 +1,5 @@
 import { lazy, type ReactElement } from "react";
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link, useSearchParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { NegocioProvider } from "./context/NegocioContext";
 import { SidebarProvider } from "./context/SidebarContext";
@@ -14,11 +14,15 @@ import LoginPage from "./pages/LoginPage";
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const ProductosPage = lazy(() => import("./pages/ProductosPage"));
 const StockPage = lazy(() => import("./pages/StockPage"));
+const ComprasPage = lazy(() => import("./pages/ComprasPage"));
+const PlanificacionPage = lazy(() => import("./pages/PlanificacionPage"));
+const KardexPage = lazy(() => import("./pages/KardexPage"));
 const MovimientosPage = lazy(() => import("./pages/MovimientosPage"));
 const PreciosPage = lazy(() => import("./pages/PreciosPage"));
 const ClientesPage = lazy(() => import("./pages/ClientesPage"));
 const ProveedoresPage = lazy(() => import("./pages/ProveedoresPage"));
 const CajaPage = lazy(() => import("./pages/CajaPage"));
+const CotizacionesPage = lazy(() => import("./pages/CotizacionesPage"));
 const ControlCajasPage = lazy(() => import("./pages/ControlCajasPage"));
 const TurnosPage = lazy(() => import("./pages/TurnosPage"));
 const HistorialPage = lazy(() => import("./pages/HistorialPage"));
@@ -34,14 +38,25 @@ const TomaInventarioPage = lazy(() => import("./pages/TomaInventarioPage"));
 const AuditoriaPage = lazy(() => import("./pages/AuditoriaPage"));
 const NegocioPage = lazy(() => import("./pages/NegocioPage"));
 
+function CajaRuta() {
+  const [params] = useSearchParams();
+  const esCotizacion = params.get("modo") === "cotizar" && !params.has("cotizacion");
+  return <CajaPage key={esCotizacion ? "cotizar" : "vender"} />;
+}
+
 const pages = {
   "/dashboard": <DashboardPage />,
-  "/caja": <CajaPage />,
+  "/caja": <CajaRuta />,
+  "/cotizaciones": <CotizacionesPage />,
   "/control-cajas": <ControlCajasPage />,
   "/turnos": <TurnosPage />,
   "/productos": <ProductosPage />,
   "/stock": <StockPage />,
+  "/compras": <ComprasPage />,
+  "/planificacion": <PlanificacionPage />,
+  "/kardex": <KardexPage />,
   "/bodega": <MovimientosPage />,
+  "/mermas": <MovimientosPage soloMermas />,
   "/bodegas": <BodegasPage />,
   "/toma-inventario": <TomaInventarioPage />,
   "/precios": <PreciosPage />,

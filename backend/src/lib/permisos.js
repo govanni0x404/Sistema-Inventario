@@ -1,9 +1,9 @@
 const prisma = require("./prisma");
 
 // Debe reflejar las secciones de navegación del frontend.
-const SECCIONES = ["dashboard", "caja", "turnos", "productos", "stock", "bodega", "precios", "clientes", "proveedores", "historial", "consultas"];
+const SECCIONES = ["dashboard", "caja", "turnos", "productos", "stock", "bodega", "precios", "clientes", "proveedores", "historial", "consultas", "compras", "planificacion"];
 
-// Sin fila en la tabla = permitido por defecto, así nada se rompe hasta que un admin restrinja algo.
+// Conserva el acceso previo. Las secciones nuevas con costos requieren habilitación explícita.
 // Recibe el NOMBRE del rol (así lo lleva el JWT) y lo resuelve a su id internamente —
 // RolPermiso.rolId es una FK real, no un string libre.
 async function permisosDeRol(rolNombre) {
@@ -11,18 +11,21 @@ async function permisosDeRol(rolNombre) {
     return Object.fromEntries(SECCIONES.map((s) => [s, true]));
   }
   const rol = await prisma.rol.findUnique({ where: { nombre: rolNombre } });
-  if (!rol) return Object.fromEntries(SECCIONES.map((s) => [s, true]));
-  const filas = await prisma.rolPermiso.findMany({ where: { rolId: rol.id } });
+  const filas = rol ? await prisma.rolPermiso.findMany({ where: { rolId: rol.id } }) : [];
   const mapa = Object.fromEntries(filas.map((f) => [f.seccion, f.permitido]));
-  return Object.fromEntries(SECCIONES.map((s) => [s, mapa[s] !== undefined ? mapa[s] : true]));
+  return Object.fromEntries(SECCIONES.map((s) => [s, mapa[s] ?? permisoInicial(s)]));
+}
+
+function permisoInicial(seccion) {
+  return !["compras", "planificacion"].includes(seccion);
 }
 
 async function tienePermiso(rolNombre, seccion) {
   if (rolNombre === "admin") return true;
   const rol = await prisma.rol.findUnique({ where: { nombre: rolNombre } });
-  if (!rol) return true;
+  if (!rol) return permisoInicial(seccion);
   const fila = await prisma.rolPermiso.findUnique({ where: { rolId_seccion: { rolId: rol.id, seccion } } });
-  return fila ? fila.permitido : true;
+  return fila?.permitido ?? permisoInicial(seccion);
 }
 
-module.exports = { SECCIONES, permisosDeRol, tienePermiso };
+module.exports = { SECCIONES, permisosDeRol, tienePermiso, permisoInicial };

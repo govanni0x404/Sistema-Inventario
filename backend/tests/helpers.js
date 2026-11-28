@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../src/lib/prisma");
-const { sign } = require("../src/lib/jwt");
+const { firmarSesion } = require("../src/lib/jwt");
+const { crearProductoCatalogo } = require("../src/lib/stockBodega");
 
 // Vacía todas las tablas entre tests para que cada uno arranque de un estado limpio y
 // conocido. tests/setup.js exige una base dedicada cuyo nombre termine en `_test`.
@@ -11,11 +12,17 @@ async function resetDb() {
     prisma.devolucionItem.deleteMany(),
     prisma.devolucion.deleteMany(),
     prisma.movimientoStock.deleteMany(),
+    prisma.operacionCompraItem.deleteMany(),
+    prisma.operacionCompra.deleteMany({ where: { recepcionId: { not: null } } }),
+    prisma.operacionCompra.deleteMany(),
+    prisma.ordenCompraItem.deleteMany(),
+    prisma.ordenCompra.deleteMany(),
     prisma.tomaInventario.deleteMany(),
     prisma.ventaEnEsperaItem.deleteMany(),
     prisma.ventaEnEspera.deleteMany(),
     prisma.ventaItem.deleteMany(),
     prisma.venta.deleteMany(),
+    prisma.cotizacion.deleteMany(),
     prisma.movimientoCaja.deleteMany(),
     prisma.turnoCaja.deleteMany(),
     prisma.caja.deleteMany({ where: { principal: false } }),
@@ -28,6 +35,7 @@ async function resetDb() {
     prisma.stockBodega.deleteMany(),
     prisma.bodega.deleteMany(),
     prisma.producto.deleteMany(),
+    prisma.identidadProducto.deleteMany(),
     prisma.proveedor.deleteMany(),
     prisma.categoria.deleteMany(),
     prisma.unidad.deleteMany(),
@@ -78,7 +86,7 @@ async function crearUsuario({ rol = "cajero", activo = true } = {}) {
     data: { nombre: `Test ${rol} ${n}`, email: `test${n}.${rol}@test.local`, password, rolId: rolRow.id, activo },
     include: { rol: true },
   });
-  const token = sign({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol.nombre });
+  const token = firmarSesion(usuario);
   return { usuario, token };
 }
 
@@ -90,29 +98,30 @@ async function obtenerOCrearUnidadDefecto() {
 
 async function crearProducto(overrides = {}) {
   const n = siguienteId();
-  const unidadId = overrides.unidadId ?? (await obtenerOCrearUnidadDefecto()).id;
-  const producto = await prisma.producto.create({
-    data: {
-      sku: `SKU-TEST-${n}`,
-      nombre: `Producto Test ${n}`,
-      precioCompra: 5,
-      precioVenta: 10,
-      stock: 100,
-      stockMinimo: 0,
-      ...overrides,
-      unidadId,
-    },
+  const { stock = 100, ...campos } = overrides;
+  const unidadId = campos.unidadId ?? (await obtenerOCrearUnidadDefecto()).id;
+  const producto = await crearProductoCatalogo(prisma, {
+    sku: `SKU-TEST-${n}`,
+    nombre: `Producto Test ${n}`,
+    precioCompra: 5,
+    precioVenta: 10,
+    stockMinimo: 0,
+    ...campos,
+    unidadId,
   });
-  // Mantiene StockBodega en sincro con Producto.stock para los tests que ejercitan
-  // ventas/devoluciones/movimientos (ver crearBodegaPrincipal). Si aún no existe una
-  // bodega principal en este test, no hay nada que sembrar.
+  // Los casos con operaciones de inventario crean la bodega principal antes del producto.
   const principal = await prisma.bodega.findFirst({ where: { principal: true } });
   if (principal) {
     await prisma.stockBodega.create({
-      data: { bodegaId: principal.id, productoId: producto.id, cantidad: producto.stock },
+      data: { bodegaId: principal.id, productoId: producto.id, cantidad: stock },
     });
   }
-  return producto;
+  return { ...producto, stock: principal ? stock : 0 };
+}
+
+async function stockDeProducto(productoId) {
+  const result = await prisma.stockBodega.aggregate({ where: { productoId }, _sum: { cantidad: true } });
+  return result._sum.cantidad ?? 0;
 }
 
 async function crearTipoTurno(nombre = "Turno Test") {
@@ -122,6 +131,7 @@ async function crearTipoTurno(nombre = "Turno Test") {
 
 module.exports = {
   prisma,
+  stockDeProducto,
   resetDb,
   crearUsuario,
   crearProducto,

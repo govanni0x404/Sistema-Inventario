@@ -3,11 +3,13 @@ const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { registrarAuditoria } = require("../lib/auditoria");
+const { passwordSchema: politicaPassword } = require("../lib/password");
 
 const usuarioSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
-  email: z.string().trim().email("Correo inválido"),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  // Se guarda en minúsculas: el correo es único sin distinguir mayúsculas.
+  email: z.string().trim().toLowerCase().email("Correo inválido"),
+  password: politicaPassword,
   rol: z.string().trim().min(1, "Selecciona un rol"),
 });
 
@@ -27,7 +29,7 @@ async function resolverRol(nombre) {
 }
 
 const passwordSchema = z.object({
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  password: politicaPassword,
 });
 
 function serialize(u) {
@@ -47,7 +49,10 @@ async function crear(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
 
-  const existente = await prisma.usuario.findUnique({ where: { email: parsed.data.email } });
+  const existente = await prisma.usuario.findFirst({
+    where: { email: { equals: parsed.data.email, mode: "insensitive" } },
+    select: { id: true },
+  });
   if (existente) return res.status(409).json({ error: "Ya existe un usuario con ese correo" });
 
   const rol = await resolverRol(parsed.data.rol);
@@ -81,6 +86,8 @@ async function actualizar(req, res) {
   const { rol: rolNombre, ...resto } = parsed.data;
   const data = { ...resto };
   if (rolNombre && rolNombre !== usuario.rol.nombre) data.rolId = (await resolverRol(rolNombre)).id;
+  // Desactivar la cuenta cierra todas sus sesiones abiertas.
+  if (parsed.data.activo === false && usuario.activo) data.tokenVersion = { increment: 1 };
 
   const actualizado = await prisma.usuario.update({ where: { id: req.params.id }, data, include: { rol: true } });
 
@@ -106,7 +113,7 @@ async function actualizar(req, res) {
   res.json(serialize(actualizado));
 }
 
-// PUT /api/usuarios/:id/password
+// PUT /api/usuarios/:id/password — el reseteo cierra todas las sesiones del usuario.
 async function resetPassword(req, res) {
   const parsed = passwordSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -117,7 +124,7 @@ async function resetPassword(req, res) {
   if (!usuario) throw new HttpError(404, "Usuario no encontrado");
 
   const password = await bcrypt.hash(parsed.data.password, 10);
-  await prisma.usuario.update({ where: { id: req.params.id }, data: { password } });
+  await prisma.usuario.update({ where: { id: req.params.id }, data: { password, tokenVersion: { increment: 1 } } });
   await registrarAuditoria(prisma, {
     accion: "password_reseteada",
     usuarioId: req.user.id,

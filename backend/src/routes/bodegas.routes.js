@@ -3,12 +3,14 @@ const asyncHandler = require("../middleware/asyncHandler");
 const requireSeccion = require("../middleware/requireSeccion");
 const controller = require("../controllers/bodegas.controller");
 const tomas = require("../controllers/tomasInventario.controller");
+const movimientos = require("../controllers/movimientosStock.controller");
 
 const router = Router();
 
 // Lectura abierta a cualquier usuario autenticado: Stock/Bodega/Productos necesitan
 // poder listar bodegas aunque el rol no tenga habilitada la sección "Bodega".
 router.get("/", asyncHandler(controller.listar));
+router.get("/kardex", requireSeccion("bodega"), asyncHandler(movimientos.kardex));
 router.get("/:id/stock", asyncHandler(controller.stockDeBodega));
 router.get("/:id/tomas-inventario", requireSeccion("bodega"), asyncHandler(tomas.listar));
 router.get("/:id/tomas-inventario/:tomaId", requireSeccion("bodega"), asyncHandler(tomas.obtener));

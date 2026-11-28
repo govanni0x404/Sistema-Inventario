@@ -4,7 +4,7 @@ const HttpError = require("../lib/HttpError");
 const { bloquearTurnoExclusivo } = require("../lib/turnoLock");
 const { fechaDeQuery } = require("../lib/rangoFechas");
 const { aCentavos, montoEnCentavos } = require("../lib/dinero");
-const { buscarTurnoAbierto } = require("../lib/turnoAbierto");
+const { buscarTurnoAbierto, verificarDuenoTurno } = require("../lib/turnoAbierto");
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -18,10 +18,12 @@ const INCLUDE = {
 function serialize(t) {
   return {
     ...t,
+    estado: t.fechaCierre ? "cerrado" : "abierto",
     montoInicial: Number(t.montoInicial),
     montoContado: t.montoContado != null ? Number(t.montoContado) : null,
     montoEsperado: t.montoEsperado != null ? Number(t.montoEsperado) : null,
-    diferencia: t.diferencia != null ? Number(t.diferencia) : null,
+    diferencia: t.montoContado != null && t.montoEsperado != null
+      ? (aCentavos(t.montoContado) - aCentavos(t.montoEsperado)) / 100 : null,
   };
 }
 
@@ -80,22 +82,32 @@ async function resumenMovimientosCaja(turnoCajaId, db = prisma) {
   return {
     ingresos: porTipo.ingreso,
     retiros: porTipo.retiro,
-    movimientos: movimientos.map((m) => ({ ...m, monto: Number(m.monto) })),
+    movimientos: movimientos.map(({ claveIdempotencia, huellaSolicitud, ...m }) => ({ ...m, monto: Number(m.monto) })),
   };
 }
 
-// GET /api/turnos?estado=&desde=&hasta=
+// GET /api/turnos?estado=&desde=&hasta= — los más recientes, con un tope para que un
+// rango enorme no traiga miles de turnos de una vez.
+const LIMITE_TURNOS = 500;
+
 async function listar(req, res) {
   const { estado, desde, hasta } = req.query;
   const where = {};
-  if (estado) where.estado = String(estado);
+  if (estado === "abierto") where.fechaCierre = null;
+  else if (estado === "cerrado") where.fechaCierre = { not: null };
+  else if (estado) return res.json([]);
   if (desde || hasta) {
     where.fechaApertura = {};
     if (desde) where.fechaApertura.gte = fechaDeQuery(desde, { nombre: "desde" });
     if (hasta) where.fechaApertura.lte = fechaDeQuery(hasta, { nombre: "hasta", finDelDia: true });
   }
 
-  const turnos = await prisma.turnoCaja.findMany({ where, include: INCLUDE, orderBy: { fechaApertura: "desc" } });
+  const turnos = await prisma.turnoCaja.findMany({
+    where,
+    include: INCLUDE,
+    orderBy: [{ fechaApertura: "desc" }, { id: "desc" }],
+    take: LIMITE_TURNOS,
+  });
   res.json(turnos.map(serialize));
 }
 
@@ -166,8 +178,9 @@ async function abrir(req, res) {
 }
 
 const cerrarSchema = z.object({
-  montoContado: z.coerce.number().nonnegative(),
-  notas: z.string().trim().optional().nullable(),
+  // Vacío o null es un error (antes "" se convertía en 0 y cerraba la caja en cero).
+  montoContado: montoEnCentavos,
+  notas: z.string().trim().max(500, "Las notas no pueden superar los 500 caracteres").optional().nullable(),
 });
 
 // POST /api/turnos/:id/cerrar — arqueo: calcula el esperado y la diferencia contra lo contado.
@@ -183,7 +196,8 @@ async function cerrar(req, res) {
     await bloquearTurnoExclusivo(tx);
     const turno = await tx.turnoCaja.findUnique({ where: { id: req.params.id } });
     if (!turno) throw new HttpError(404, "Turno no encontrado");
-    if (turno.estado !== "abierto") throw new HttpError(409, "Este turno ya está cerrado");
+    if (turno.fechaCierre) throw new HttpError(409, "Este turno ya está cerrado");
+    await verificarDuenoTurno(turno, req.user);
 
     const { porMetodo, devolucionesPorMetodo } = await resumenVentasDeTurno(turno.id, tx);
     const { ingresos, retiros } = await resumenMovimientosCaja(turno.id, tx);
@@ -191,17 +205,15 @@ async function cerrar(req, res) {
     const montoEsperado = round2(
       Number(turno.montoInicial) + porMetodo.efectivo - devolucionesPorMetodo.efectivo + ingresos - retiros
     );
-    const diferencia = round2(parsed.data.montoContado - montoEsperado);
+    const montoContado = parsed.data.montoContado / 100;
 
     return tx.turnoCaja.update({
       where: { id: turno.id },
       data: {
-        estado: "cerrado",
         fechaCierre: new Date(),
         usuarioCierreId: req.user?.id,
-        montoContado: parsed.data.montoContado,
+        montoContado,
         montoEsperado,
-        diferencia,
         notas: parsed.data.notas || null,
       },
       include: INCLUDE,

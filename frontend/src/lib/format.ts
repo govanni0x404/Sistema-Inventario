@@ -8,16 +8,21 @@ const opcionesMoneda = {
   minimumFractionDigits: 0,
 } as const;
 const formatoMoneda = new Intl.NumberFormat(LOCALE, { ...opcionesMoneda, maximumFractionDigits: 0 });
-const formatoMontoCaja = new Intl.NumberFormat(LOCALE, { ...opcionesMoneda, maximumFractionDigits: 2 });
 
 /** $12.345 — pesos chilenos, sin decimales. */
 export const money = (n: number) => formatoMoneda.format(Number(n || 0));
-export const moneyCaja = (n: number) => formatoMontoCaja.format(n);
+/** Igual que `money`: el peso chileno no tiene centavos, también en caja. */
+export const moneyCaja = (n: number) => formatoMoneda.format(Number(n || 0));
 
+/**
+ * Los montos se guardan internamente en centavos, pero el CLP no tiene centavos:
+ * todo monto digitado o calculado se redondea a pesos enteros (múltiplos de 100 centavos).
+ */
 export const aCentavos = (monto: number) => Math.round(monto * 100);
+export const aPesosEnteros = (centavos: number) => Math.round(centavos / 100) * 100;
+export const pisoPesosEnteros = (centavos: number) => Math.floor(centavos / 100) * 100;
+/** Convierte un monto digitado (pesos) a centavos de pesos enteros. */
+export const pesosACentavos = (monto: number) => aPesosEnteros(aCentavos(monto));
 
-/** Valor para un <input> de monto: entero si no tiene centavos, si no con 2 decimales. */
-export const montoInput = (n: number) => {
-  const r = Math.round(n * 100) / 100;
-  return Number.isInteger(r) ? String(r) : r.toFixed(2);
-};
+/** Valor para un <input> de monto en pesos enteros. */
+export const montoInput = (n: number) => String(Math.round(n));

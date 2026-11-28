@@ -32,7 +32,13 @@ describe("Bloqueo de cuenta tras intentos fallidos", () => {
     const bloqueado = await request(app)
       .post("/api/auth/login")
       .send({ email: cajero1.usuario.email, password: "test1234" });
-    expect(bloqueado.status).toBe(429);
-    expect(bloqueado.body.error).toMatch(/bloqueada temporalmente/);
+    // Mismo 401 que una contraseña incorrecta: no revela que la cuenta existe ni que está bloqueada.
+    expect(bloqueado.status).toBe(401);
+    expect(bloqueado.body.error).toBe("Correo o contraseña incorrectos");
+    expect(await prisma.registroAuditoria.count({ where: { accion: "login_bloqueado", usuarioAfectadoId: cajero1.usuario.id } })).toBe(1);
+
+    const inexistente = await request(app).post("/api/auth/login").send({ email: "nadie@test.local", password: "test1234" });
+    expect(inexistente.status).toBe(401);
+    expect(inexistente.body.error).toBe(bloqueado.body.error);
   });
 });

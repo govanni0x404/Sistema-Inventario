@@ -1,15 +1,16 @@
 const { createHash } = require("node:crypto");
-const { Prisma } = require("@prisma/client");
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
-const { bodegaPrincipal, ajustarStockBodega } = require("../lib/stockBodega");
+const { bodegaPrincipal, ajustarStockBodega, bloquearProductos, stockTotal, validarStockTotal } = require("../lib/stockBodega");
 const { bloquearTurnoCompartido } = require("../lib/turnoLock");
-const { buscarTurnoAbierto } = require("../lib/turnoAbierto");
+const { buscarTurnoAbierto, verificarDuenoTurno } = require("../lib/turnoAbierto");
 const { fechaDeQuery } = require("../lib/rangoFechas");
 const { filtroFolio } = require("../lib/folioVenta");
-const { aCentavos, MAX_CENTAVOS, montoEnCentavos, proporcionRedondeada } = require("../lib/dinero");
+const { aCentavos, MAX_CENTAVOS, montoEnCentavos, proporcionRedondeada, subtotalLineaCentavos } = require("../lib/dinero");
 const { obtenerNegocio, DOCUMENTOS_VENTA } = require("./negocio.controller");
+const { bloquearCotizacion, estadoCotizacion, lineasCotizacion } = require("../lib/cotizaciones");
+const { registrarAuditoria } = require("../lib/auditoria");
 
 const METODOS_PAGO = require("../lib/metodosPago");
 const cantidadSchema = z.coerce.number().int().positive("La cantidad debe ser mayor a 0").max(2_147_483_647);
@@ -25,10 +26,11 @@ const ventaSchema = z
     claveIdempotencia: z.string().uuid().transform((clave) => clave.toLowerCase()).optional(),
     turnoCajaId: z.string().uuid().optional(),
     clienteId: z.string().uuid().optional().nullable(),
+    cotizacionId: z.string().uuid().optional(),
     listaPrecioId: z.string().uuid().optional().nullable(),
     tipoDocumento: z.enum(DOCUMENTOS_VENTA).optional(),
     esCortesia: z.boolean().optional().default(false),
-    motivoCortesia: z.string().trim().optional().nullable(),
+    motivoCortesia: z.string().trim().max(500, "El motivo no puede superar los 500 caracteres").optional().nullable(),
     pagos: z
       .array(
         z.object({
@@ -65,7 +67,7 @@ const ventaSchema = z
 function serializeVenta({ claveIdempotencia, huellaSolicitud, ...venta }, importesPorItem) {
   return {
     ...venta,
-    subtotal: Number(venta.subtotal),
+    subtotal: (aCentavos(venta.total) + aCentavos(venta.descuento)) / 100,
     descuento: Number(venta.descuento),
     total: Number(venta.total),
     pagos: venta.pagos?.map((p) => ({ ...p, monto: Number(p.monto) })),
@@ -73,14 +75,14 @@ function serializeVenta({ claveIdempotencia, huellaSolicitud, ...venta }, import
       ...it,
       precioUnitario: Number(it.precioUnitario),
       descuento: Number(it.descuento),
-      subtotal: Number(it.subtotal),
+      subtotal: subtotalLineaCentavos(it) / 100,
       ...(importesPorItem && { importeCobrado: importesPorItem.get(it.id) / 100 }),
     })),
     devoluciones: venta.devoluciones?.map((d) => (d.items ? serializeDevolucion(d) : { ...d, total: Number(d.total) })),
   };
 }
 
-function serializeDevolucion(d) {
+function serializeDevolucion({ claveIdempotencia, huellaSolicitud, ...d }) {
   return {
     ...d,
     total: Number(d.total),
@@ -94,8 +96,10 @@ const DEVOLUCION_INCLUDE = {
 };
 
 const devolucionSchema = z.object({
+  // Opcional: con la misma clave, un reintento devuelve la devolución ya registrada.
+  claveIdempotencia: z.string().uuid().transform((clave) => clave.toLowerCase()).optional(),
   turnoCajaId: z.string().uuid().optional(),
-  motivo: z.string().optional().nullable(),
+  motivo: z.string().max(500, "El motivo no puede superar los 500 caracteres").optional().nullable(),
   // Con más de una forma de pago se debe elegir el método de reembolso.
   metodoReembolso: z
     .enum(METODOS_PAGO, { errorMap: () => ({ message: "Método de reembolso inválido" }) })
@@ -122,7 +126,7 @@ function ordenarItems(venta) {
 // garantiza que la suma de las líneas coincide con el total del ticket.
 function importesDeVenta(venta, items) {
   const total = venta.esCortesia ? 0 : aCentavos(venta.total);
-  const subtotales = items.map((it) => aCentavos(it.subtotal));
+  const subtotales = items.map(subtotalLineaCentavos);
   const sumaSubtotales = subtotales.reduce((suma, importe) => suma + importe, 0);
   const pesos = sumaSubtotales > 0 ? subtotales : items.map((it) => it.cantidad);
   const pesoTotal = pesos.reduce((suma, peso) => suma + peso, 0);
@@ -242,7 +246,7 @@ async function crear(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
   const {
-    claveIdempotencia, turnoCajaId, clienteId, listaPrecioId, tipoDocumento, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia,
+    claveIdempotencia, turnoCajaId, clienteId, listaPrecioId, tipoDocumento, pagos, items, descuento: descuentoTicket, esCortesia, motivoCortesia, cotizacionId,
   } = parsed.data;
   const usuarioId = req.user.id;
 
@@ -259,6 +263,7 @@ async function crear(req, res) {
     turnoCajaId,
     clienteId: clienteId ?? null,
     listaPrecioId: listaPrecioId ?? null,
+    ...(cotizacionId && { cotizacionId }),
     ...(tipoDocumento !== undefined && { tipoDocumento }),
     esCortesia,
     motivoCortesia: esCortesia ? motivoCortesia : null,
@@ -289,7 +294,26 @@ async function crear(req, res) {
     if (!turnoAbierto) {
       throw new HttpError(409, "Debes abrir un turno de caja antes de vender");
     }
+    await verificarDuenoTurno(turnoAbierto, req.user);
     const configuracion = await obtenerNegocio(tx);
+    const cotizacion = cotizacionId ? await bloquearCotizacion(tx, cotizacionId) : null;
+    const lineasCotizadas = cotizacion ? lineasCotizacion(cotizacion) : null;
+    if (cotizacion) {
+      if (estadoCotizacion(cotizacion) !== "vigente") throw new HttpError(409, "La cotización ya no está disponible para cobrar");
+      if (esCortesia || listaPrecioId || clienteId !== cotizacion.clienteId || descuentoTicket !== aCentavos(cotizacion.descuento)) {
+        throw new HttpError(409, "El cobro debe conservar el cliente y los importes de la cotización");
+      }
+      const saldos = new Map([...cantidadPorProducto].map(([id, cantidad]) => [id, [cantidad, descuentoPorProducto.get(id)]]));
+      for (const it of lineasCotizadas) {
+        const saldo = saldos.get(it.productoId);
+        if (!saldo) throw new HttpError(409, "El cobro debe conservar los productos de la cotización");
+        saldo[0] -= it.cantidad;
+        saldo[1] -= it.descuento;
+      }
+      if ([...saldos.values()].some(([cantidad, descuento]) => cantidad !== 0 || descuento !== 0)) {
+        throw new HttpError(409, "El cobro debe conservar las cantidades y descuentos de la cotización");
+      }
+    }
 
     if (clienteId) {
       const cliente = await tx.cliente.findUnique({ where: { id: clienteId } });
@@ -304,10 +328,7 @@ async function crear(req, res) {
       for (const p of precios) precioListaPorProducto.set(p.productoId, aCentavos(p.precio));
     }
 
-    await tx.$queryRaw`
-      SELECT "id" FROM "productos" WHERE "id" IN (${Prisma.join(productoIds)})
-      ORDER BY "id" COLLATE "C" FOR NO KEY UPDATE
-    `;
+    await bloquearProductos(tx, productoIds);
     const productos = await tx.producto.findMany({ where: { id: { in: productoIds } } });
     const productoPorId = new Map(productos.map((producto) => [producto.id, producto]));
 
@@ -325,20 +346,28 @@ async function crear(req, res) {
       if (!producto.ventaPublico) {
         throw new HttpError(409, `"${producto.nombre}" no está habilitado para venta al público`);
       }
-      if (cantidad > 2_147_483_647 || (producto.inventariable && producto.stock - cantidad < -2_147_483_648)) {
+      if (cantidad > 2_147_483_647) {
         throw new HttpError(400, `Cantidad fuera de rango para "${producto.nombre}"`);
       }
-      if (producto.inventariable && !configuracion.venderSinStock && producto.stock < cantidad) {
-        throw new HttpError(409, `Stock insuficiente para "${producto.nombre}" (disponible: ${producto.stock})`);
+      if (producto.inventariable) {
+        const disponible = await stockTotal(tx, productoId);
+        if (disponible - cantidad < -2_147_483_648) {
+          throw new HttpError(400, `Cantidad fuera de rango para "${producto.nombre}"`);
+        }
+        if (!configuracion.venderSinStock && disponible < cantidad) {
+          throw new HttpError(409, `Stock insuficiente para "${producto.nombre}" (disponible: ${disponible})`);
+        }
+        stockResultantePorProducto.set(productoId, disponible - cantidad);
       }
     }
 
-    const lineas = configuracion.agruparProductosCaja
+    const lineas = lineasCotizadas ?? (configuracion.agruparProductosCaja
       ? [...cantidadPorProducto].map(([productoId, cantidad]) => ({ productoId, cantidad, descuento: descuentoPorProducto.get(productoId) }))
-      : items;
-    for (const { productoId, cantidad, descuento: descuentoItem } of lineas) {
+      : items);
+    const maximoDescuento = cotizacion ? 100 : configuracion.descuentoMaximoCaja;
+    for (const { productoId, cantidad, descuento: descuentoItem, precio } of lineas) {
       const producto = productoPorId.get(productoId);
-      const precioUnitario = precioListaPorProducto.get(productoId) ?? aCentavos(producto.precioVenta);
+      const precioUnitario = precio ?? precioListaPorProducto.get(productoId) ?? aCentavos(producto.precioVenta);
       const bruto = precioUnitario * cantidad;
       if (descuentoItem > bruto) {
         throw new HttpError(400, `El descuento de "${producto.nombre}" no puede superar su subtotal (${bruto / 100})`);
@@ -349,8 +378,8 @@ async function crear(req, res) {
       if (brutoVenta > MAX_CENTAVOS || subtotalVenta > MAX_CENTAVOS) {
         throw new HttpError(400, "El importe del ticket supera el máximo permitido");
       }
-      if (descuentoItem > Math.floor(bruto * configuracion.descuentoMaximoCaja / 100)) {
-        throw new HttpError(400, `El descuento de "${producto.nombre}" supera el máximo de ${configuracion.descuentoMaximoCaja} %`);
+      if (descuentoItem > Math.floor(bruto * maximoDescuento / 100)) {
+        throw new HttpError(400, `El descuento de "${producto.nombre}" supera el máximo de ${maximoDescuento} %`);
       }
       itemsData.push({
         productoId,
@@ -359,7 +388,6 @@ async function crear(req, res) {
         precioUnitario: precioUnitario / 100,
         costoUnitario: producto.precioCompra,
         descuento: descuentoItem / 100,
-        subtotal: subtotal / 100,
       });
     }
 
@@ -367,8 +395,8 @@ async function crear(req, res) {
       throw new HttpError(400, `El descuento no puede superar el subtotal del ticket (${subtotalVenta / 100})`);
     }
     const total = subtotalVenta - descuentoTicket;
-    if (brutoVenta - total > Math.floor(brutoVenta * configuracion.descuentoMaximoCaja / 100)) {
-      throw new HttpError(400, `El descuento total supera el máximo de ${configuracion.descuentoMaximoCaja} %`);
+    if (brutoVenta - total > Math.floor(brutoVenta * maximoDescuento / 100)) {
+      throw new HttpError(400, `El descuento total supera el máximo de ${maximoDescuento} %`);
     }
 
     if (!esCortesia) {
@@ -382,22 +410,13 @@ async function crear(req, res) {
       .map((productoId) => ({ productoId, cantidad: cantidadPorProducto.get(productoId) }));
     const bodega = itemsConStock.length ? await bodegaPrincipal(tx) : null;
     for (const { productoId, cantidad } of itemsConStock) {
-      const resultado = await tx.producto.updateMany({
-        where: { id: productoId, activo: true, ...(!configuracion.venderSinStock && { stock: { gte: cantidad } }) },
-        data: { stock: { decrement: cantidad } },
-      });
-      if (resultado.count === 0) {
-        throw new HttpError(409, `Stock insuficiente para "${productoPorId.get(productoId).nombre}"`);
-      }
       await ajustarStockBodega(tx, bodega.id, productoId, -cantidad, configuracion.venderSinStock);
-      const { stock } = await tx.producto.findUniqueOrThrow({ where: { id: productoId }, select: { stock: true } });
-      stockResultantePorProducto.set(productoId, stock);
     }
 
     const ventaCreada = await tx.venta.create({
       data: {
         clienteId: clienteId || null,
-        subtotal: subtotalVenta / 100,
+        cotizacionId,
         descuento: descuentoTicket / 100,
         total: total / 100,
         tipoDocumento: tipoDocumento ?? configuracion.documentoVentaDefecto,
@@ -411,6 +430,9 @@ async function crear(req, res) {
         ...(esCortesia ? {} : { pagos: { create: pagos.map((p) => ({ metodoPago: p.metodoPago, monto: p.monto / 100 })) } }),
       },
       include: VENTA_INCLUDE,
+    });
+    if (cotizacion) await registrarAuditoria(tx, {
+      accion: "cotizacion_cobrada", usuarioId, detalle: `Cotización #${cotizacion.folio}`,
     });
 
     // Registro de auditoría: cada venta deja su propio rastro en el historial de movimientos de stock.
@@ -442,10 +464,34 @@ async function crearDevolucion(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
-  const { motivo, items, turnoCajaId, metodoReembolso: metodoPedido } = parsed.data;
+  const { claveIdempotencia, motivo, items, turnoCajaId, metodoReembolso: metodoPedido } = parsed.data;
   const ventaId = req.params.id;
+  const usuarioId = req.user.id;
+  const huellaSolicitud = claveIdempotencia ? createHash("sha256").update(JSON.stringify({
+    ventaId,
+    turnoCajaId: turnoCajaId ?? null,
+    motivo: motivo || null,
+    metodoReembolso: metodoPedido ?? null,
+    items: [...items].sort((a, b) => a.ventaItemId.localeCompare(b.ventaItemId)).map((it) => [it.ventaItemId, it.cantidad]),
+  })).digest("hex") : null;
 
   const devolucion = await prisma.$transaction(async (tx) => {
+    // Igual que en ventas: el candado por usuario+clave serializa los reintentos simultáneos.
+    if (claveIdempotencia) {
+      const claveUsuario = `${usuarioId}:${claveIdempotencia}`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(72100004, hashtext(${claveUsuario}))::text`;
+      const existente = await tx.devolucion.findUnique({
+        where: { usuarioId_claveIdempotencia: { usuarioId, claveIdempotencia } },
+        include: DEVOLUCION_INCLUDE,
+      });
+      if (existente) {
+        if (existente.huellaSolicitud !== huellaSolicitud) {
+          throw new HttpError(409, "Esta clave ya corresponde a una devolución con otros datos");
+        }
+        return existente;
+      }
+    }
+
     await bloquearTurnoCompartido(tx);
     // Las devoluciones de un mismo ticket consultan las cantidades una a la vez.
     await tx.$queryRaw`SELECT id FROM ventas WHERE id = ${ventaId} FOR NO KEY UPDATE`;
@@ -454,7 +500,7 @@ async function crearDevolucion(req, res) {
       include: {
         items: { include: { devolucionItems: true } },
         pagos: true,
-        devoluciones: { select: { total: true } },
+        devoluciones: { select: { total: true, metodoReembolso: true } },
       },
     });
     if (!venta) throw new HttpError(404, "Venta no encontrada");
@@ -482,11 +528,32 @@ async function crearDevolucion(req, res) {
     if (metodoReembolso === "efectivo" && !turnoAbierto) {
       throw new HttpError(409, "Abre un turno de caja para devolver efectivo");
     }
+    await verificarDuenoTurno(turnoAbierto, req.user);
 
     const cantidades = new Map(items.map((it) => [it.ventaItemId, it.cantidad]));
     const { total, itemsData } = calcularDevolucion(venta, cantidades);
+
+    // Con pago dividido, lo reembolsado con un método no puede superar lo que se pagó con
+    // ese método (descontando reembolsos anteriores con el mismo método). Ventas antiguas
+    // sin filas de pago no tienen el desglose, así que no se limitan aquí.
+    if (metodoReembolso && venta.pagos.length > 0) {
+      const pagado = venta.pagos
+        .filter((pago) => pago.metodoPago === metodoReembolso)
+        .reduce((suma, pago) => suma + aCentavos(pago.monto), 0);
+      const yaReembolsado = venta.devoluciones
+        .filter((dev) => dev.metodoReembolso === metodoReembolso)
+        .reduce((suma, dev) => suma + aCentavos(dev.total), 0);
+      const disponible = Math.max(0, pagado - yaReembolsado);
+      if (aCentavos(total) > disponible) {
+        throw new HttpError(
+          409,
+          `El reembolso (${(aCentavos(total) / 100).toFixed(2)}) supera lo que queda por devolver con ${metodoReembolso} en este ticket (${(disponible / 100).toFixed(2)}). Elige otro método de reembolso.`
+        );
+      }
+    }
     const inventariables = new Set(venta.items.filter((item) => item.inventariable).map((item) => item.id));
     const itemsConStock = itemsData.filter((item) => inventariables.has(item.ventaItemId));
+    if (itemsConStock.length) await bloquearProductos(tx, [...new Set(itemsConStock.map((item) => item.productoId))]);
     const bodega = itemsConStock.length ? await bodegaPrincipal(tx) : null;
 
     const devolucionCreada = await tx.devolucion.create({
@@ -496,7 +563,9 @@ async function crearDevolucion(req, res) {
         total,
         metodoReembolso,
         turnoCajaId: turnoAbierto?.id ?? null,
-        usuarioId: req.user?.id,
+        usuarioId,
+        claveIdempotencia,
+        huellaSolicitud,
         items: {
           create: itemsData.map(({ ventaItemId, cantidad, subtotal }) => ({ ventaItemId, cantidad, subtotal })),
         },
@@ -506,12 +575,8 @@ async function crearDevolucion(req, res) {
 
     // Registro de auditoría: la devolución también deja su rastro en movimientos de stock.
     for (const { productoId, cantidad } of itemsConStock) {
-      const { stock } = await tx.producto.update({
-        where: { id: productoId },
-        data: { stock: { increment: cantidad } },
-        select: { stock: true },
-      });
       await ajustarStockBodega(tx, bodega.id, productoId, cantidad);
+      const stock = validarStockTotal(await stockTotal(tx, productoId));
       await tx.movimientoStock.create({
         data: {
           productoId,

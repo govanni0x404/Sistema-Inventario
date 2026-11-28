@@ -2,6 +2,7 @@ const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { registrarAuditoria } = require("../lib/auditoria");
+const { montoEnPesos } = require("../lib/dinero");
 
 function serialize(l) {
   return { ...l };
@@ -126,7 +127,7 @@ async function listarPrecios(req, res) {
 }
 
 const precioSchema = z.object({
-  precio: z.coerce.number().nonnegative("El precio no puede ser negativo"),
+  precio: montoEnPesos,
 });
 
 // PUT /api/listas-precio/:id/precios/:productoId — crea o actualiza el precio del producto en esta lista.

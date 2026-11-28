@@ -13,6 +13,10 @@ const montoEnCentavos = z.preprocess(
     .transform(aCentavos),
 );
 
+// Mismo control que montoEnCentavos (máximo de Decimal(10, 2), hasta dos decimales, vacío
+// o null = inválido) pero devuelve pesos, para los campos que se guardan tal cual en la BD.
+const montoEnPesos = montoEnCentavos.transform((centavos) => centavos / 100);
+
 // Usa enteros para conservar la precisión aun cuando el producto de los factores es grande.
 function proporcionRedondeada(importe, numerador, denominador) {
   if (denominador === 0) return 0;
@@ -20,4 +24,8 @@ function proporcionRedondeada(importe, numerador, denominador) {
   return Number((BigInt(importe) * BigInt(numerador) + divisor / 2n) / divisor);
 }
 
-module.exports = { aCentavos, MAX_CENTAVOS, montoEnCentavos, proporcionRedondeada };
+function subtotalLineaCentavos({ precioUnitario, cantidad, descuento }) {
+  return aCentavos(precioUnitario) * cantidad - aCentavos(descuento);
+}
+
+module.exports = { aCentavos, MAX_CENTAVOS, montoEnCentavos, montoEnPesos, proporcionRedondeada, subtotalLineaCentavos };

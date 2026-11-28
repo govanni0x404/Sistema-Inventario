@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { negocioApi, setupApi } from "../api/negocio";
 import { useAuth } from "./AuthContext";
@@ -31,23 +31,31 @@ const NegocioContext = createContext<NegocioState | null>(null);
 export function NegocioProvider({ children }: { children: ReactNode }) {
   const { usuario } = useAuth();
   const [negocio, setNegocio] = useState<Negocio>(VACIO);
+  // Cada carga recibe un número; solo se aplica la respuesta de la más reciente
+  // (evita que una respuesta lenta de la sesión anterior pise la actual).
+  const ultimaCarga = useRef(0);
+  const conSesion = usuario !== null;
 
   const recargar = useCallback(async () => {
+    const carga = ++ultimaCarga.current;
     try {
-      if (usuario) {
-        setNegocio(await negocioApi.obtener());
+      if (conSesion) {
+        const datos = await negocioApi.obtener();
+        if (carga === ultimaCarga.current) setNegocio(datos);
       } else {
         const estado = await setupApi.estado();
-        setNegocio({ ...VACIO, nombre: estado.nombreNegocio });
+        if (carga === ultimaCarga.current) setNegocio({ ...VACIO, nombre: estado.nombreNegocio });
       }
     } catch {
       // Sin conexión: se mantiene lo último conocido.
     }
-  }, [usuario]);
+  }, [conSesion]);
 
   useEffect(() => {
+    // Al cerrar sesión se descartan los datos completos del negocio; solo se conserva el nombre.
+    if (!conSesion) setNegocio((actual) => ({ ...VACIO, nombre: actual.nombre }));
     recargar();
-  }, [recargar]);
+  }, [conSesion, recargar]);
 
   return <NegocioContext.Provider value={{ negocio, recargar }}>{children}</NegocioContext.Provider>;
 }

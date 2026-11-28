@@ -19,11 +19,13 @@ import PaymentMixChart from "@/components/dashboard/PaymentMixChart";
 import { fechaCompleta, fechaCorta, hoyStr, validarRango } from "@/lib/fechas";
 import { LOCALE, money } from "@/lib/format";
 import { folioComprobante } from "@/lib/printTicket";
+import { ETIQUETAS_PAGO, type MetodoPago } from "@/types/venta";
 
 const cantidadVentas = (cantidad: number) => `${cantidad} ${cantidad === 1 ? "venta" : "ventas"}`;
 const diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const decimal = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 });
-const fechaVenta = new Intl.DateTimeFormat(LOCALE, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const fechaVenta = new Intl.DateTimeFormat(LOCALE, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Santiago" });
+const etiquetaPago = (metodo: string) => ETIQUETAS_PAGO[metodo as MetodoPago] ?? metodo;
 type Resultado = { clave: string; data: DashboardResumen } | { clave: string; error: string };
 
 function resumirActividad(ventas: DashboardResumen["ventasPorDia"]) {
@@ -98,10 +100,10 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-3">
-      <section aria-labelledby="dashboard-title" className="company-banner overflow-hidden rounded-xl border border-white/10 text-white">
+      <section aria-labelledby="dashboard-title" className="company-banner relative overflow-hidden rounded-2xl border border-white/10 text-white shadow-card">
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 px-4 py-4 sm:px-5">
           <div className="min-w-0">
-          <h1 id="dashboard-title" className="text-xs font-semibold text-sidebar-primary">Dashboard</h1>
+          <h1 id="dashboard-title" className="text-[11px] font-semibold tracking-[0.14em] text-sidebar-primary uppercase">Dashboard</h1>
           <p className="mt-1 font-display text-2xl leading-tight font-bold tracking-tight [overflow-wrap:anywhere] sm:text-3xl">
             {negocio.nombre}
           </p>
@@ -118,11 +120,11 @@ export default function DashboardPage() {
           )}
           </div>
           <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-            <p className="flex items-center gap-2 rounded-md bg-hero/90 px-2.5 py-2 text-xs text-hero-muted">
+            <p className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-2.5 py-2 text-xs text-hero-muted backdrop-blur-sm">
               <CalendarDays size={15} aria-hidden="true" />
               <time dateTime={hoyStr()}>{fechaCompleta(hoyStr())}</time>
             </p>
-            <div className="max-w-full rounded-lg bg-card text-card-foreground">
+            <div className="max-w-full rounded-lg bg-card text-card-foreground shadow-card">
               <RangoFechasSelector {...{ rango, setRango, desdeCustom, setDesdeCustom, hastaCustom, setHastaCustom }} />
             </div>
           </div>
@@ -148,29 +150,29 @@ export default function DashboardPage() {
       {data && actividad && (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-            <section aria-labelledby="ventas-hoy" className="col-span-2 flex min-w-0 flex-col justify-between gap-2 rounded-xl bg-hero p-3.5 text-hero-foreground md:col-span-1 sm:p-4">
+            <section aria-labelledby="ventas-hoy" className="brand-gradient relative col-span-2 flex min-w-0 flex-col justify-between gap-2 overflow-hidden rounded-xl p-4 shadow-card md:col-span-1 sm:p-5">
               <div className="flex items-center gap-2.5">
-                <span className="grid size-9 place-items-center rounded-lg bg-white/12 text-hero-foreground" aria-hidden="true"><ShoppingCart size={18} /></span>
+                <span className="grid size-9 place-items-center rounded-full bg-white/15 ring-1 ring-white/25 ring-inset" aria-hidden="true"><ShoppingCart size={18} /></span>
                 <h2 className="text-sm font-medium" id="ventas-hoy">Ventas de hoy</h2>
               </div>
               <div>
-                <p className="font-display text-2xl leading-tight font-bold tracking-tight tabular-nums [overflow-wrap:anywhere]">{money(data.kpis.ventasHoy.total)}</p>
-                <p className="mt-0.5 text-xs text-hero-muted">{cantidadVentas(data.kpis.ventasHoy.cantidad)}</p>
+                <p className="money text-[1.7rem] leading-tight font-bold tracking-tight [overflow-wrap:anywhere]">{money(data.kpis.ventasHoy.total)}</p>
+                <p className="mt-0.5 text-xs text-white/85">{cantidadVentas(data.kpis.ventasHoy.cantidad)}</p>
               </div>
               {abrirCaja && (
-                <Link to="/caja" className="inline-flex w-fit items-center gap-2 rounded-md py-1 text-xs font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-hero-foreground">
+                <Link to="/caja" className="inline-flex w-fit items-center gap-2 rounded-md py-1 text-xs font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-white">
                   Ir a Caja <ArrowRight size={15} aria-hidden="true" />
                 </Link>
               )}
             </section>
-              <StatTile label="Ventas del período" value={money(data.kpis.ventasPeriodo.total)} sublabel={cantidadVentas(data.kpis.ventasPeriodo.cantidad)} icon={<ChartNoAxesCombined size={16} />} />
-              <StatTile label="Ticket promedio" value={money(data.kpis.ticketPromedioPeriodo)} sublabel={periodo ?? undefined} icon={<Receipt size={16} />} />
-              <StatTile label="Valor de inventario" value={money(data.kpis.valorInventario)} sublabel={`${data.kpis.productosActivos} productos activos`} icon={<Package size={16} />} />
-              <StatTile label="Stock bajo" value={String(data.kpis.productosStockBajo)} sublabel="Productos por reponer" icon={<AlertTriangle size={16} />} tone={data.kpis.productosStockBajo > 0 ? "warning" : "default"} />
+              <StatTile label="Ventas del período" value={money(data.kpis.ventasPeriodo.total)} sublabel={cantidadVentas(data.kpis.ventasPeriodo.cantidad)} icon={<ChartNoAxesCombined size={17} />} tone="success" />
+              <StatTile label="Ticket promedio" value={money(data.kpis.ticketPromedioPeriodo)} sublabel={periodo ?? undefined} icon={<Receipt size={17} />} tone="info" />
+              <StatTile label="Valor de inventario" value={money(data.kpis.valorInventario)} sublabel={`${data.kpis.productosActivos} productos activos`} icon={<Package size={17} />} />
+              <StatTile label="Stock bajo" value={String(data.kpis.productosStockBajo)} sublabel="Productos por reponer" icon={<AlertTriangle size={17} />} tone={data.kpis.productosStockBajo > 0 ? "warning" : "success"} />
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-            <Card className="min-w-0 p-4 shadow-none sm:p-5">
+            <Card className="min-w-0 p-4 sm:p-5">
               <section aria-labelledby="ventas-periodo">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -202,7 +204,7 @@ export default function DashboardPage() {
               </section>
             </Card>
 
-            <Card className="min-w-0 gap-4 p-4 shadow-none sm:p-5">
+            <Card className="min-w-0 gap-4 p-4 sm:p-5">
               <div>
                 <h2 className="font-display text-lg font-bold tracking-tight">Ventas por forma de pago</h2>
                 <p className="mt-1 text-xs text-muted-foreground">Monto y proporción cobrada por cada medio.</p>
@@ -212,14 +214,14 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-            <Card className="min-w-0 gap-4 p-4 shadow-none sm:p-5">
+            <Card className="min-w-0 gap-4 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 id="ventas-recientes" className="font-display text-lg font-bold tracking-tight">Ventas recientes</h2>
                 {verHistorial && <Link to="/historial" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">Ver historial <ArrowRight size={14} aria-hidden="true" /></Link>}
               </div>
               {data.ventasRecientes.length ? (
                 <Table aria-labelledby="ventas-recientes">
-                  <TableHeader className="bg-muted/70">
+                  <TableHeader>
                     <TableRow>
                       <TableHead>Folio</TableHead><TableHead>Fecha</TableHead><TableHead>Usuario</TableHead><TableHead>Pago</TableHead><TableHead className="text-right">Total</TableHead>
                     </TableRow>
@@ -233,16 +235,16 @@ export default function DashboardPage() {
                         <TableCell><time dateTime={venta.fecha}>{fechaVenta.format(new Date(venta.fecha))}</time></TableCell>
                         <TableCell>{venta.usuario ?? "Sin usuario"}</TableCell>
                         <TableCell className="whitespace-normal">
-                          {venta.esCortesia ? "Cortesía" : venta.pagos.length ? venta.pagos.map((p) => `${p.metodoPago}${venta.pagos.length > 1 ? ` ${money(p.monto)}` : ""}`).join(" · ") : "Sin pago registrado"}
+                          {venta.esCortesia ? "Cortesía" : venta.pagos.length ? venta.pagos.map((p) => `${etiquetaPago(p.metodoPago)}${venta.pagos.length > 1 ? ` ${money(p.monto)}` : ""}`).join(" · ") : "Sin pago registrado"}
                         </TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums">{money(venta.total)}</TableCell>
+                        <TableCell className="money text-right font-semibold">{money(venta.total)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               ) : <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">Aún no hay ventas en este período.</p>}
             </Card>
-            <Card className="min-w-0 gap-4 p-4 shadow-none sm:p-5">
+            <Card className="min-w-0 gap-4 p-4 sm:p-5">
               <div>
                 <h2 className="font-display text-lg font-bold tracking-tight">Ventas por usuario</h2>
                 <p className="mt-1 text-xs text-muted-foreground">Hasta ocho usuarios, ordenados por monto vendido.</p>
@@ -256,18 +258,18 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            <Card className="min-w-0 justify-between gap-3 p-4 shadow-none sm:p-5">
+            <Card className="min-w-0 justify-between gap-3 p-4 sm:p-5">
               <section aria-labelledby="stock-alerta">
                 <h2 id="stock-alerta" className="flex items-center gap-2 font-display text-lg font-bold tracking-tight">
-                  <Warehouse size={17} className="text-muted-foreground" aria-hidden="true" /> Productos con stock bajo
+                  <span aria-hidden="true" className="grid size-7 place-items-center rounded-full bg-warning/14 text-warning"><Warehouse size={15} /></span> Productos con stock bajo
                 </h2>
                 {activos > 0 && (
                   <div className="mt-4 rounded-lg bg-muted/55 p-3">
                     <div aria-hidden="true" className="mb-2 h-2.5 overflow-hidden rounded-full bg-primary">
-                      <div className="h-full bg-[#d29b42]" style={{ width: `${stockEnRiesgo}%` }} />
+                      <div className="h-full bg-warning" style={{ width: `${stockEnRiesgo}%` }} />
                     </div>
                     <p className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span><span aria-hidden="true" className="mr-1 inline-block size-2 rounded-full bg-[#d29b42]" /><strong className="text-foreground">{bajoMinimo}</strong> en el mínimo o por debajo</span>
+                      <span><span aria-hidden="true" className="mr-1 inline-block size-2 rounded-full bg-warning" /><strong className="text-foreground">{bajoMinimo}</strong> en el mínimo o por debajo</span>
                       <span><span aria-hidden="true" className="mr-1 inline-block size-2 rounded-full bg-primary" /><strong className="text-foreground">{activos - bajoMinimo}</strong> sobre el mínimo</span>
                     </p>
                   </div>
@@ -284,7 +286,7 @@ export default function DashboardPage() {
                           <p className="font-medium [overflow-wrap:anywhere]">{p.nombre}</p>
                           <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{p.codigoBarras}</p>
                         </div>
-                        <span className="rounded-md bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+                        <span className="rounded-full bg-warning/14 px-2.5 py-1 text-[11px] font-semibold text-warning">
                           {p.stock} de {p.stockMinimo} {p.unidad}
                         </span>
                       </li>
@@ -301,7 +303,7 @@ export default function DashboardPage() {
                 </Link>
               )}
             </Card>
-            <Card className="min-w-0 gap-4 p-4 shadow-none sm:p-5">
+            <Card className="min-w-0 gap-4 p-4 sm:p-5">
               <div>
                 <h2 className="font-display text-lg font-bold tracking-tight">Actividad por día de la semana</h2>
                 <p className="mt-1 text-xs text-muted-foreground">Promedio de ventas por día, incluidos los días sin ventas.</p>
@@ -312,7 +314,7 @@ export default function DashboardPage() {
                 emptyLabel="Aún no hay ventas en este período."
               />
             </Card>
-            <Card className="min-w-0 gap-4 p-4 shadow-none sm:p-5">
+            <Card className="min-w-0 gap-4 p-4 sm:p-5">
               <div>
                 <h2 className="font-display text-lg font-bold tracking-tight">Productos con mayor monto vendido</h2>
                 <p className="mt-1 text-xs text-muted-foreground">Los cinco productos con mayor subtotal del período.</p>

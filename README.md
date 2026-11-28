@@ -1,6 +1,6 @@
 # Kardexia
 
-Sistema de punto de venta e inventario en pesos chilenos. Permite abrir y cerrar turnos, combinar medios de pago, guardar ventas en espera y registrar devoluciones. Mantiene stock por bodega y un historial de movimientos, con catálogos, listas de precios, usuarios, permisos y reportes exportables.
+Sistema de punto de venta e inventario en pesos chilenos. Permite abrir y cerrar turnos, combinar medios de pago, guardar ventas en espera y registrar devoluciones. Gestiona órdenes de compra, recepciones parciales y devoluciones a proveedores. Mantiene stock por bodega, mínimos de reposición, valorización al costo de catálogo y un kárdex exportable.
 
 ## Desarrollo local
 
@@ -41,6 +41,25 @@ npm run build --prefix frontend
 ```
 
 Las pruebas del backend vacían las tablas de la base de pruebas entre casos.
+
+## Integridad de datos
+
+Las cotizaciones y las tomas de inventario tienen una cabecera y una tabla de líneas. El total de la cotización y el resumen del conteo se calculan a partir de esas líneas. Los nombres, códigos y precios históricos quedan en el documento y se pueden consultar tras eliminar un producto del catálogo.
+
+Las existencias por bodega son la fuente para el saldo total del producto. Las recepciones determinan cuántas unidades se han recibido en una compra. La referencia a la recepción original identifica las devoluciones a proveedor. Caja calcula el subtotal y la diferencia de arqueo con los importes registrados. La fecha de cierre determina el estado del turno.
+
+### Revisión de claves y dependencias
+
+| Área | Claves y dependencias revisadas |
+| --- | --- |
+| Catálogos | Productos por identidad, SKU y código de barras cuando existe. Nombre único en categorías, unidades, bodegas, listas, cajas, tipos de turno y roles. Clientes y proveedores por ID. La foto del producto usa el ID de la ficha. |
+| Inventario | Existencias por producto y bodega. Movimientos por ID. Tomas por ID y líneas por posición o por producto dentro de la toma. Los historiales de precio registran cambios por evento. |
+| Compras | Órdenes por ID o folio y líneas por orden y producto. Operaciones por ID y cantidades por operación y línea. |
+| Caja y ventas | Turnos y movimientos de caja por ID. Ventas por ID y cotización enlazada cuando existe. Pagos por venta y método. Las líneas de venta tienen ID propio y las devoluciones identifican cada línea devuelta dentro de un documento. Los carritos en espera tienen su propio detalle. |
+| Cotizaciones | Documentos por ID o folio y líneas por posición. Cotizaciones y conteos apuntan a una identidad de producto que sigue disponible cuando se elimina la ficha. |
+| Accesos y configuración | Usuarios por ID o correo. Permisos por rol y sección. Auditoría por evento. Configuración general por la clave de la instalación. |
+
+Los nombres y costos capturados en los documentos pertenecen al momento de la operación. El total cobrado y el monto esperado al cerrar un turno se guardan como evidencia histórica. Los movimientos conservan su bodega y su saldo resultante para consultar el kárdex junto con documentos antiguos.
 
 ## Operación
 

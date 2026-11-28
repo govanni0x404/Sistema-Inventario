@@ -7,7 +7,7 @@ if (process.env.NODE_ENV === "production") {
 
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
-const { bloquearCatalogoBodegas, inicializarStockProducto } = require("../src/lib/stockBodega");
+const { bloquearCatalogoBodegas, inicializarStockProducto, crearProductoCatalogo } = require("../src/lib/stockBodega");
 
 const prisma = new PrismaClient();
 
@@ -70,18 +70,13 @@ async function crearDatosDemostracion(tx) {
     { sku: "LI-001", nombre: "Jabón de trastes", categoria: "Limpieza", precioCompra: 15, precioVenta: 22, stock: 25, stockMinimo: 8, proveedorId: distribuidora.id },
   ];
 
-  for (const { categoria, ...producto } of productos) {
+  for (const { categoria, stock, ...producto } of productos) {
     const existente = await tx.producto.findUnique({ where: { sku: producto.sku } });
     if (existente) continue;
-    // Producto.stock es el total cacheado: debe coincidir con la suma de StockBodega.
-    const creado = await tx.producto.create({
-      data: {
-        ...producto,
-        categoriaId: categorias[categoria].id,
-        unidadId: unidadPieza.id,
-      },
+    const creado = await crearProductoCatalogo(tx, {
+      ...producto, categoriaId: categorias[categoria].id, unidadId: unidadPieza.id,
     });
-    await inicializarStockProducto(tx, creado.id, creado.stock);
+    await inicializarStockProducto(tx, creado.id, stock);
   }
 
   const tiposTurno = ["Turno Mañana", "Turno Tarde"];

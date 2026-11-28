@@ -8,13 +8,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export default function ThemeToggle() {
+export default function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Cambiar tema">
+        <Button variant="ghost" size="icon" aria-label="Cambiar tema" className={className}>
           {theme === "light" && <Sun size={17} />}
           {theme === "dark" && <Moon size={17} />}
           {theme === "system" && <SunMoon size={17} />}

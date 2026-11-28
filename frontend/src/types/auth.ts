@@ -14,7 +14,9 @@ export type Seccion =
   | "clientes"
   | "proveedores"
   | "historial"
-  | "consultas";
+  | "consultas"
+  | "compras"
+  | "planificacion";
 
 export interface Usuario {
   id: string;

@@ -2,6 +2,7 @@ const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
 const { stockCajaInclude, conStockCaja } = require("../lib/stockBodega");
+const { montoEnPesos } = require("../lib/dinero");
 const { DOCUMENTOS_VENTA, obtenerNegocio } = require("./negocio.controller");
 
 const INCLUDE = {
@@ -10,7 +11,7 @@ const INCLUDE = {
   items: {
     include: {
       producto: {
-        select: { id: true, nombre: true, codigoBarras: true, precioVenta: true, stock: true, activo: true, ventaPublico: true, inventariable: true, stockBodegas: stockCajaInclude },
+        select: { id: true, nombre: true, codigoBarras: true, precioVenta: true, activo: true, ventaPublico: true, inventariable: true, stockBodegas: stockCajaInclude },
       },
     },
   },
@@ -29,16 +30,16 @@ function serialize(v) {
 }
 
 const crearSchema = z.object({
-  referencia: z.string().trim().optional().nullable(),
+  referencia: z.string().trim().max(120, "La referencia no puede superar los 120 caracteres").optional().nullable(),
   clienteId: z.string().uuid().optional().nullable(),
-  descuento: z.coerce.number().min(0).optional().default(0),
+  descuento: montoEnPesos.optional().default(0),
   tipoDocumento: z.enum(DOCUMENTOS_VENTA).optional(),
   items: z
     .array(
       z.object({
         productoId: z.string().uuid(),
-        cantidad: z.coerce.number().int().positive(),
-        descuento: z.coerce.number().min(0).optional().default(0),
+        cantidad: z.coerce.number().int().positive().max(2_147_483_647),
+        descuento: montoEnPesos.optional().default(0),
       })
     )
     .min(1, "El carrito está vacío"),

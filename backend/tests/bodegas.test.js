@@ -1,6 +1,6 @@
 const request = require("supertest");
 const app = require("../src/app");
-const { prisma, resetDb, crearUsuario, crearProducto, crearTipoTurno, crearBodegaPrincipal } = require("./helpers");
+const { prisma, stockDeProducto, resetDb, crearUsuario, crearProducto, crearTipoTurno, crearBodegaPrincipal } = require("./helpers");
 
 describe("Bodegas", () => {
   let admin, cajero, principal, producto;
@@ -71,9 +71,9 @@ describe("Bodegas", () => {
     expect(eliminar.status).toBe(400);
   });
 
-  test("no permite eliminar una bodega que todavía tiene stock asignado", async () => {
+  test.each([5, -5])("no permite eliminar una bodega que todavía tiene un saldo de %i", async (cantidad) => {
     const secundaria = await prisma.bodega.create({ data: { nombre: "Bodega Secundaria" } });
-    await prisma.stockBodega.create({ data: { bodegaId: secundaria.id, productoId: producto.id, cantidad: 5 } });
+    await prisma.stockBodega.create({ data: { bodegaId: secundaria.id, productoId: producto.id, cantidad } });
 
     const res = await request(app)
       .delete(`/api/bodegas/${secundaria.id}`)
@@ -101,12 +101,7 @@ describe("Bodegas", () => {
     ]);
 
     expect([[201, 409], [404, 204]]).toContainEqual([entrada.status, baja.status]);
-    const [productoFinal, stockBodegas] = await Promise.all([
-      prisma.producto.findUnique({ where: { id: producto.id } }),
-      prisma.stockBodega.aggregate({ where: { productoId: producto.id }, _sum: { cantidad: true } }),
-    ]);
-    expect(productoFinal.stock).toBe(entrada.status === 201 ? 12 : 10);
-    expect(stockBodegas._sum.cantidad).toBe(productoFinal.stock);
+    expect(await stockDeProducto(producto.id)).toBe(entrada.status === 201 ? 12 : 10);
   });
 
   test("transferencia mueve stock entre bodegas y deja 2 movimientos de auditoría", async () => {
@@ -133,8 +128,7 @@ describe("Bodegas", () => {
     expect(stockDestino.cantidad).toBe(4);
 
     // El total del producto no cambia: solo se redistribuye entre bodegas.
-    const productoActualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
-    expect(productoActualizado.stock).toBe(10);
+    expect(await stockDeProducto(producto.id)).toBe(10);
 
     const movimientos = await prisma.movimientoStock.count({ where: { productoId: producto.id, origen: "transferencia" } });
     expect(movimientos).toBe(2);

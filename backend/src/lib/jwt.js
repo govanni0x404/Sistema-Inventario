@@ -20,8 +20,20 @@ function sign(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "12h" });
 }
 
+// Token de sesión de un usuario: lleva tokenVersion para que cambiar la contraseña o
+// desactivar la cuenta invalide los tokens emitidos antes (ver middleware/auth.js).
+function firmarSesion(usuario) {
+  return sign({
+    id: usuario.id,
+    nombre: usuario.nombre,
+    email: usuario.email,
+    rol: usuario.rol.nombre,
+    tokenVersion: usuario.tokenVersion ?? 0,
+  });
+}
+
 function verify(token) {
   return jwt.verify(token, JWT_SECRET);
 }
 
-module.exports = { sign, verify };
+module.exports = { sign, verify, firmarSesion };

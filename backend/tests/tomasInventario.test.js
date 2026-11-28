@@ -1,7 +1,7 @@
 const { randomUUID } = require("node:crypto");
 const request = require("supertest");
 const app = require("../src/app");
-const { prisma, resetDb, crearUsuario, crearProducto, crearBodegaPrincipal } = require("./helpers");
+const { prisma, stockDeProducto, resetDb, crearUsuario, crearProducto, crearBodegaPrincipal } = require("./helpers");
 
 describe("Toma y ajuste de inventario", () => {
   let usuario, bodega, producto, auth, ruta;
@@ -45,7 +45,7 @@ describe("Toma y ajuste de inventario", () => {
     const stock = await prisma.stockBodega.findMany({ where: { productoId: producto.id } });
     expect(stock.find(({ bodegaId }) => bodegaId === bodega.id).cantidad).toBe(0);
     expect(stock.find(({ bodegaId }) => bodegaId === secundaria.id).cantidad).toBe(3);
-    expect((await prisma.producto.findUniqueOrThrow({ where: { id: producto.id } })).stock).toBe(3);
+    expect(await stockDeProducto(producto.id)).toBe(3);
     const movimientos = await prisma.movimientoStock.findMany({ where: { tomaInventarioId: id } });
     expect(movimientos).toHaveLength(2);
     expect(movimientos).toEqual(expect.arrayContaining([
@@ -69,8 +69,8 @@ describe("Toma y ajuste de inventario", () => {
     });
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error).toContain(otro.nombre);
-    expect((await prisma.producto.findUniqueOrThrow({ where: { id: producto.id } })).stock).toBe(10);
-    expect((await prisma.producto.findUniqueOrThrow({ where: { id: otro.id } })).stock).toBe(4);
+    expect(await stockDeProducto(producto.id)).toBe(10);
+    expect(await stockDeProducto(otro.id)).toBe(4);
     expect(await prisma.tomaInventario.count()).toBe(0);
     expect(await prisma.movimientoStock.count()).toBe(1);
   });
@@ -86,7 +86,7 @@ describe("Toma y ajuste de inventario", () => {
     expect(otroAjuste.status).toBe(409);
     expect(await prisma.tomaInventario.count()).toBe(1);
     expect(await prisma.movimientoStock.count({ where: { origen: "ajuste" } })).toBe(1);
-    expect((await prisma.producto.findUniqueOrThrow({ where: { id: producto.id } })).stock).toBe(8);
+    expect(await stockDeProducto(producto.id)).toBe(8);
   });
 
   test("valida cantidades, ajustes sin diferencia y permiso de bodega", async () => {

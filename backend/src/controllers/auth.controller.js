@@ -2,9 +2,10 @@ const bcrypt = require("bcryptjs");
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
-const { sign } = require("../lib/jwt");
+const { firmarSesion } = require("../lib/jwt");
 const { permisosDeRol } = require("../lib/permisos");
 const { registrarAuditoria } = require("../lib/auditoria");
+const { passwordSchema } = require("../lib/password");
 
 const loginSchema = z.object({
   email: z.string().trim().email("Correo inválido"),
@@ -18,6 +19,11 @@ const loginSchema = z.object({
 // levanta solo cuando los intentos salen de la ventana (no hay estado que resetear).
 const LOCKOUT_INTENTOS = 5;
 const LOCKOUT_VENTANA_MIN = 15;
+const CREDENCIALES_INCORRECTAS = "Correo o contraseña incorrectos";
+
+// Hash de relleno: con un correo inexistente igual se ejecuta un bcrypt.compare, para que
+// el tiempo de respuesta no revele qué correos están registrados.
+const HASH_RELLENO = bcrypt.hashSync("relleno-para-igualar-tiempos", 10);
 
 async function serializeUsuario(u) {
   return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol.nombre, permisos: await permisosDeRol(u.rol.nombre) };
@@ -37,8 +43,9 @@ async function login(req, res) {
     include: { rol: true },
   });
   if (!usuario) {
+    await bcrypt.compare(password, HASH_RELLENO);
     await registrarAuditoria(prisma, { accion: "login_fallido", detalle: `correo no registrado: ${email}` });
-    throw new HttpError(401, "Correo o contraseña incorrectos");
+    throw new HttpError(401, CREDENCIALES_INCORRECTAS);
   }
 
   const ventanaInicio = new Date(Date.now() - LOCKOUT_VENTANA_MIN * 60 * 1000);
@@ -50,28 +57,34 @@ async function login(req, res) {
       fecha: { gte: ventanaInicio },
     },
   });
+  // La contraseña se compara siempre (también con la cuenta bloqueada) y el bloqueo responde
+  // igual que una contraseña incorrecta: desde afuera no se distingue si la cuenta existe.
+  const valido = await bcrypt.compare(password, usuario.password);
   if (intentosFallidos >= LOCKOUT_INTENTOS) {
     await registrarAuditoria(prisma, {
       accion: "login_bloqueado",
       usuarioAfectadoId: usuario.id,
       detalle: `bloqueado tras ${intentosFallidos} intentos fallidos en ${LOCKOUT_VENTANA_MIN} min`,
     });
-    throw new HttpError(429, "Demasiados intentos fallidos. Esta cuenta está bloqueada temporalmente, intenta de nuevo en unos minutos.");
+    throw new HttpError(401, CREDENCIALES_INCORRECTAS);
   }
 
-  const valido = await bcrypt.compare(password, usuario.password);
   if (!valido) {
     await registrarAuditoria(prisma, { accion: "login_fallido", usuarioAfectadoId: usuario.id, detalle: "contraseña incorrecta" });
-    throw new HttpError(401, "Correo o contraseña incorrectos");
+    throw new HttpError(401, CREDENCIALES_INCORRECTAS);
   }
 
   if (!usuario.activo) {
     await registrarAuditoria(prisma, { accion: "login_fallido", usuarioAfectadoId: usuario.id, detalle: "cuenta desactivada" });
     throw new HttpError(403, "Tu cuenta está desactivada. Contacta a un administrador.");
   }
+  if (!usuario.rol.activo) {
+    await registrarAuditoria(prisma, { accion: "login_fallido", usuarioAfectadoId: usuario.id, detalle: "rol desactivado" });
+    throw new HttpError(403, "Tu rol está desactivado. Contacta a un administrador.");
+  }
 
   await registrarAuditoria(prisma, { accion: "login_exitoso", usuarioId: usuario.id });
-  const token = sign({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol.nombre });
+  const token = firmarSesion(usuario);
   res.json({ token, usuario: await serializeUsuario(usuario) });
 }
 
@@ -86,10 +99,11 @@ async function me(req, res) {
 
 const cambiarPasswordSchema = z.object({
   actual: z.string().min(1, "Ingresa tu contraseña actual"),
-  nueva: z.string().min(8, "La nueva contraseña debe tener al menos 8 caracteres"),
+  nueva: passwordSchema,
 });
 
 // PUT /api/auth/password — cada usuario cambia SU propia contraseña (pide la actual).
+// Invalida todas sus sesiones (tokenVersion + 1) y devuelve un token nuevo para esta.
 async function cambiarPassword(req, res) {
   const parsed = cambiarPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -104,9 +118,13 @@ async function cambiarPassword(req, res) {
   }
   if (actual === nueva) throw new HttpError(400, "La nueva contraseña debe ser distinta a la actual");
 
-  await prisma.usuario.update({ where: { id: usuario.id }, data: { password: await bcrypt.hash(nueva, 10) } });
+  const actualizado = await prisma.usuario.update({
+    where: { id: usuario.id },
+    data: { password: await bcrypt.hash(nueva, 10), tokenVersion: { increment: 1 } },
+    include: { rol: true },
+  });
   await registrarAuditoria(prisma, { accion: "password_cambiada", usuarioId: usuario.id, usuarioAfectadoId: usuario.id });
-  res.json({ ok: true });
+  res.json({ ok: true, token: firmarSesion(actualizado) });
 }
 
 async function solicitarRecuperacion(req, res) {

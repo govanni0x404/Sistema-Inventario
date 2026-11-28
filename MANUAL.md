@@ -33,6 +33,8 @@ Luego, en este orden:
 
 **Otras opciones en Caja**
 
+- **Cotizar (F6)**. Agrega los productos, selecciona un cliente y elige hasta cuándo se conserva el precio. También puedes empezar en **General → Cotizaciones → Nueva cotización** aunque la caja esté cerrada. Abre la propuesta para imprimirla o pulsa **Cobrar en caja**. El stock se descuenta al registrar la venta.
+- Usa **F2** para buscar productos, **F4** para abrir las ventas en espera y **F8** para enfocar el monto de pago.
 - **Herramientas → Control de cajas**: un administrador puede crear cajas, cambiar sus nombres y editar su disponibilidad. Cada caja puede tener un turno abierto.
 - **En espera**: guarda una venta a medias (ej. el cliente fue a buscar algo) y recupérala después.
 - **Cortesía**: regala productos sin cobrar (pide un motivo). Descuenta stock pero no cuenta como venta.
@@ -67,10 +69,28 @@ Puedes ver todos los turnos cerrados en **Mantención → Turnos**.
 ## 5. Inventario
 
 - **Inventario → Stock**: cuánto tienes de cada producto. Filtra por **stock bajo** para saber qué comprar.
-- **Inventario → Entradas y salidas**: registra mercadería que llega (entrada) o que se pierde o vence (salida).
+- En **Inventario → Entradas y salidas** puedes registrar movimientos manuales, como mermas o ingresos sin orden de compra.
+- En **Inventario → Kárdex** puedes buscar por producto, bodega, período, tipo de movimiento u origen. Abre la orden desde una recepción o devolución si tu rol tiene acceso a Compras. **Exportar CSV** descarga todos los movimientos del filtro.
+- En **Inventario → Mermas**, busca el producto y pulsa **Merma**. Elige la bodega, las unidades y la causa. El historial muestra la pérdida valorizada al costo que tenía el producto al registrar la salida.
 - **Inventario → Bodegas**: si tienes más de una bodega, mueve stock entre ellas con **Transferir**. La Caja muestra las unidades disponibles para vender en la **Bodega Principal**.
 - **Inventario → Toma y ajuste de stock**: elige la bodega, selecciona **Toma de inventario** y anota el conteo físico por producto. Revisa la diferencia, escribe un motivo y guarda. Para corregir un solo producto, selecciona **Ajuste de stock**. El historial conserva quién hizo el cambio, el motivo y las cantidades anteriores y nuevas. Si las existencias cambiaron durante el conteo, actualiza el stock y revisa las cantidades antes de volver a guardar.
 - **Mantención → Precios**: cambia precios de compra y venta (queda un historial de cada cambio).
+
+### Comprar y recibir mercadería
+
+1. Entra a **Inventario → Compras** y pulsa **Nueva orden**. Elige proveedor y bodega, agrega los productos con sus cantidades y costos, y guarda el borrador.
+2. Abre la orden y pulsa **Emitir orden**. Puedes imprimirla o elegir **Guardar como PDF** desde el diálogo de impresión.
+3. Cuando llegue mercadería, pulsa **Registrar recepción**. Escribe el número de guía o factura e indica las cantidades que llegaron. El sistema suma esas unidades en la bodega elegida. Si queda un saldo, registra otra recepción cuando llegue o usa **Cerrar saldo pendiente** e indica el motivo.
+4. Para devolver mercadería, abre la recepción que la registró y pulsa **Devolver al proveedor**. Indica las cantidades y el documento de respaldo. El sistema descuenta las unidades de esa bodega y conserva las dos operaciones en el kárdex.
+
+### Reponer y valorizar existencias
+
+1. Ve a **Inventario → Reposición y valorización**. Filtra por bodega, categoría, proveedor habitual o situación.
+2. Pulsa el lápiz de la columna **Mínimo** para ajustarlo en esa bodega. Un campo vacío recupera el mínimo del producto en la bodega principal y cero en las demás.
+3. El filtro **Por reponer** muestra dónde las existencias más las unidades pendientes de órdenes emitidas quedan por debajo del mínimo. Pulsa **Crear orden** para empezar un borrador con la cantidad sugerida.
+4. La valorización multiplica las existencias por el costo de compra vigente en el catálogo. Usa **Exportar CSV** para descargar el resultado filtrado.
+
+Un administrador puede habilitar **Compras** y **Reposición y valorización** por separado en **Herramientas → Permisos**.
 
 ---
 

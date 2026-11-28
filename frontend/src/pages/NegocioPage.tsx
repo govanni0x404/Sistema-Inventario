@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
-import { Settings2, Store } from "lucide-react";
+import { PackageX, Percent, Receipt, Rows3, Settings2, Store } from "lucide-react";
 import { negocioApi } from "../api/negocio";
 import { ApiError } from "../api/client";
 import { useNegocio } from "../context/NegocioContext";
@@ -10,6 +10,7 @@ import { DOCUMENTOS_VENTA, type DocumentoVenta, type Negocio } from "../types/ne
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Campo = "nombre" | "rut" | "giro" | "direccion" | "telefono" | "email" | "mensajeTicket";
@@ -91,19 +92,22 @@ export default function NegocioPage() {
 
   return (
     <div className="w-full">
-      <div className="flex items-start gap-3 p-4 rounded-xl bg-muted mb-4">
-        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary shrink-0">
-          <Store size={16} />
+      <div className="mb-5 flex items-start gap-3 rounded-xl border border-info/20 bg-info/8 p-4">
+        <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-info/14 text-info">
+          <Store size={17} />
         </span>
-        <p className="font-body text-xs text-muted-foreground">
+        <p className="font-body text-sm text-foreground/80">
           Estos datos aparecen en el comprobante de venta que se imprime en Caja. El comprobante es interno: la boleta
           la entrega tu máquina de pago (Mercado Pago, Getnet, etc.).
         </p>
       </div>
 
       <form onSubmit={guardar} className="grid gap-5 lg:grid-cols-2">
-        <section className="space-y-4 rounded-xl border p-4 sm:p-5">
-          <h2 className="font-display text-lg font-bold">Datos del negocio</h2>
+        <section className="space-y-4 rounded-xl border bg-card p-4 shadow-card sm:p-5">
+          <h2 className="flex items-center gap-2.5 font-display text-lg font-bold tracking-tight">
+            <span aria-hidden="true" className="grid size-8 place-items-center rounded-lg bg-primary/12 text-primary"><Receipt size={17} /></span>
+            Datos del negocio
+          </h2>
         {CAMPOS.map((c) => {
           const error = c.key === "rut" && rutInvalido ? "RUT inválido (revisa el dígito verificador)" : errores?.[c.key]?.[0];
           return (
@@ -125,25 +129,30 @@ export default function NegocioPage() {
         })}
         </section>
 
-        <section className="self-start overflow-hidden rounded-xl border">
-          <h2 className="flex items-center gap-2 bg-secondary px-4 py-3 font-display text-lg font-bold text-secondary-foreground sm:px-5">
-            <Settings2 size={19} aria-hidden="true" /> Configuración de caja
-          </h2>
-          <div className="space-y-4 p-4 sm:p-5">
-            <label className="flex items-start gap-3 rounded-lg border p-3">
-              <input type="checkbox" checked={venderSinStock} onChange={(event) => setVenderSinStock(event.target.checked)} className="mt-0.5 size-4 accent-primary" />
-              <span className="grid gap-1 text-sm font-semibold">
-                Permitir ventas sin stock
-                <span className="text-xs font-normal text-muted-foreground">El inventario quedará en negativo por las unidades vendidas sin existencia.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3 rounded-lg border p-3">
-              <input type="checkbox" checked={agrupar} onChange={(event) => setAgrupar(event.target.checked)} className="mt-0.5 size-4 accent-primary" />
-              <span className="grid gap-1 text-sm font-semibold">
-                Agrupar productos iguales en caja
-                <span className="text-xs font-normal text-muted-foreground">Cada escaneo suma una unidad en la misma línea del ticket.</span>
-              </span>
-            </label>
+        <section className="self-start overflow-hidden rounded-xl border bg-card shadow-card">
+          <div className="brand-gradient flex items-center gap-3 px-4 py-3.5 sm:px-5">
+            <span aria-hidden="true" className="grid size-9 place-items-center rounded-lg bg-white/15 ring-1 ring-white/25 ring-inset"><Settings2 size={18} /></span>
+            <div>
+              <h2 className="font-display text-lg leading-tight font-bold tracking-tight">Configuración de caja</h2>
+              <p className="text-xs text-white/85">Reglas que se aplican al vender.</p>
+            </div>
+          </div>
+          <div className="divide-y">
+            {([
+              { id: "vender-sin-stock", checked: venderSinStock, onChange: setVenderSinStock, Icono: PackageX, titulo: "Permitir ventas sin stock", ayuda: "El inventario quedará en negativo por las unidades vendidas sin existencia." },
+              { id: "agrupar-productos", checked: agrupar, onChange: setAgrupar, Icono: Rows3, titulo: "Agrupar productos iguales en caja", ayuda: "Cada escaneo suma una unidad en la misma línea del ticket." },
+            ] as const).map(({ id, checked, onChange, Icono, titulo, ayuda }) => (
+              <div key={id} className="flex items-start gap-3 px-4 py-4 transition-colors hover:bg-primary/5 sm:px-5">
+                <span aria-hidden="true" className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icono size={16} /></span>
+                <div className="grid min-w-0 flex-1 gap-1">
+                  <Label htmlFor={id} className="cursor-pointer text-sm font-semibold">{titulo}</Label>
+                  <p id={`${id}-ayuda`} className="text-xs text-muted-foreground">{ayuda}</p>
+                </div>
+                <Switch id={id} checked={checked} onCheckedChange={onChange} aria-describedby={`${id}-ayuda`} className="mt-1" />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-4 border-t bg-muted/30 p-4 sm:p-5">
             <div className="space-y-2">
               <Label htmlFor="documento-venta-defecto">Documento de venta por defecto</Label>
               <Select value={documento} onValueChange={(valor) => setDocumento(valor as DocumentoVenta)}>
@@ -152,7 +161,7 @@ export default function NegocioPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="descuento-maximo-caja">Descuento máximo en caja (%)</Label>
+              <Label htmlFor="descuento-maximo-caja" className="flex items-center gap-1.5"><Percent size={14} aria-hidden="true" className="text-primary" /> Descuento máximo en caja (%)</Label>
               <Input id="descuento-maximo-caja" type="number" required min={0} max={100} step={1} value={maximo} onChange={(event) => setMaximo(event.target.value)} />
               <p className="text-xs text-muted-foreground">Se aplica al descuento por producto y al total del ticket. Con 0 % se desactivan los descuentos.</p>
             </div>
@@ -160,7 +169,7 @@ export default function NegocioPage() {
         </section>
 
         <div className="flex justify-end lg:col-span-2">
-          <Button type="submit" disabled={guardando}>
+          <Button type="submit" size="lg" disabled={guardando}>
             {guardando ? "Guardando..." : "Guardar"}
           </Button>
         </div>

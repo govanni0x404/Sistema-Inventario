@@ -2,8 +2,9 @@ const { randomUUID } = require("node:crypto");
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { montoEnPesos } = require("../lib/dinero");
 const { imagenArchivo, imagenUrl } = require("../lib/productoImagen");
-const { bloquearCatalogoBodegas, inicializarStockProducto, stockCajaInclude, conStockCaja } = require("../lib/stockBodega");
+const { bloquearCatalogoBodegas, bloquearProductos, inicializarStockProducto, stockCajaInclude, conStockCaja, crearProductoCatalogo } = require("../lib/stockBodega");
 
 const PRODUCTO_RELACIONES = {
   proveedor: { select: { id: true, nombre: true } },
@@ -12,6 +13,9 @@ const PRODUCTO_RELACIONES = {
   foto: { select: { actualizadoEn: true } },
 };
 const PRODUCTO_INCLUDE = { ...PRODUCTO_RELACIONES, stockBodegas: stockCajaInclude };
+// Precios: hasta dos decimales y dentro del máximo de Decimal(10, 2). En campos opcionales
+// un texto vacío cuenta como "no enviado" (igual que antes), no como 0.
+const precioOpcional = z.preprocess((v) => (v === "" ? undefined : v), montoEnPesos.optional());
 const fichaSchema = {
   subfamilia: z.string().trim().max(120).optional().nullable(),
   tipoImpuesto: z.enum(["iva19", "exento"]).optional(),
@@ -32,8 +36,8 @@ const productoSchema = z.object({
   ),
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
   categoriaId: z.string().uuid().optional().nullable(),
-  precioCompra: z.coerce.number().nonnegative().optional().default(0),
-  precioVenta: z.coerce.number().nonnegative(),
+  precioCompra: precioOpcional.default(0),
+  precioVenta: montoEnPesos,
   stock: z.coerce.number().int().nonnegative().optional().default(0),
   stockMinimo: z.coerce.number().int().nonnegative().optional().default(0),
   unidadId: z.string().uuid("Selecciona una unidad"),
@@ -52,8 +56,8 @@ const productoUpdateSchema = z.object({
   ),
   nombre: z.string().trim().min(1, "El nombre es obligatorio").optional(),
   categoriaId: z.string().uuid().optional().nullable(),
-  precioCompra: z.coerce.number().nonnegative().optional(),
-  precioVenta: z.coerce.number().nonnegative().optional(),
+  precioCompra: precioOpcional,
+  precioVenta: precioOpcional,
   stockMinimo: z.coerce.number().int().nonnegative().optional(),
   unidadId: z.string().uuid("Selecciona una unidad").optional(),
   proveedorId: z.string().uuid().optional().nullable(),
@@ -115,17 +119,12 @@ async function listar(req, res) {
     ];
   }
 
-  let productos = await prisma.producto.findMany({
+  const productos = (await prisma.producto.findMany({
     where,
     include: PRODUCTO_INCLUDE,
     orderBy: { nombre: "asc" },
-  });
-
-  if (stockBajo === "true") {
-    productos = productos.filter((p) => p.stock <= p.stockMinimo);
-  }
-
-  res.json(productos.map(serialize));
+  })).map(serialize);
+  res.json(stockBajo === "true" ? productos.filter((p) => p.stock <= p.stockMinimo) : productos);
 }
 
 // GET /api/productos/:id
@@ -152,15 +151,15 @@ async function crear(req, res) {
 
   const producto = await prisma.$transaction(async (tx) => {
     await bloquearCatalogoBodegas(tx);
-    const { imagenArchivo: archivo, imagenUrl: enlace, ...datos } = parsed.data;
-    const creado = await tx.producto.create({
-      data: { ...datos, sku: randomUUID(), codigoBarras: datos.codigoBarras ?? await siguienteCodigo(tx), imagenExterna: archivo ? null : enlace },
+    const { imagenArchivo: archivo, imagenUrl: enlace, stock, ...datos } = parsed.data;
+    const creado = await crearProductoCatalogo(tx, {
+      ...datos, sku: randomUUID(), codigoBarras: datos.codigoBarras ?? await siguienteCodigo(tx), imagenExterna: archivo ? null : enlace,
     });
-    await inicializarStockProducto(tx, creado.id, creado.stock);
+    await inicializarStockProducto(tx, creado.id, stock, req.user.id);
     await guardarFoto(tx, creado.id, archivo, enlace);
     return tx.producto.findUniqueOrThrow({ where: { id: creado.id }, include: PRODUCTO_INCLUDE });
   });
-  res.status(201).json({ ...serialize(producto), stockCaja: producto.stock });
+  res.status(201).json(serialize(producto));
 }
 
 // PUT /api/productos/:id
@@ -232,25 +231,30 @@ async function historialPrecios(req, res) {
 }
 
 // DELETE /api/productos/:id
-// Si el producto ya tiene ventas asociadas, se desactiva en lugar de borrarse físicamente.
+// Si el producto ya tiene historia (ventas, ventas en espera, movimientos de stock) o
+// todavía tiene stock, se desactiva en lugar de borrarse físicamente: borrarlo eliminaría
+// en cascada su kardex y dejaría unidades "desaparecidas" sin registro.
 async function eliminar(req, res) {
-  const producto = await prisma.producto.findUnique({ where: { id: req.params.id } });
-  if (!producto) return res.status(404).json({ error: "Producto no encontrado" });
+  const productoId = req.params.id;
+  const desactivado = await prisma.$transaction(async (tx) => {
+    const [producto] = await bloquearProductos(tx, [productoId]);
+    if (!producto) throw new HttpError(404, "Producto no encontrado");
 
-  // Con ventas (o en una venta en espera) no se puede borrar físicamente: se desactiva.
-  const tieneVentas = await prisma.ventaItem.findFirst({ where: { productoId: req.params.id } });
-  const enEspera = await prisma.ventaEnEsperaItem.findFirst({ where: { productoId: req.params.id } });
-
-  if (tieneVentas || enEspera) {
-    const desactivado = await prisma.producto.update({
-      where: { id: req.params.id },
-      data: { activo: false },
-      include: { stockBodegas: stockCajaInclude },
+    const dependencias = await Promise.all([
+      tx.ventaItem.findFirst({ where: { productoId }, select: { id: true } }),
+      tx.ventaEnEsperaItem.findFirst({ where: { productoId }, select: { id: true } }),
+      tx.movimientoStock.findFirst({ where: { productoId }, select: { id: true } }),
+      tx.ordenCompraItem.findFirst({ where: { productoId }, select: { id: true } }),
+      tx.stockBodega.findFirst({ where: { productoId, cantidad: { not: 0 } }, select: { id: true } }),
+    ]);
+    if (dependencias.some(Boolean)) return tx.producto.update({
+      where: { id: productoId }, data: { activo: false }, include: { stockBodegas: stockCajaInclude },
     });
-    return res.json({ ...serialize(desactivado), _desactivado: true });
-  }
 
-  await prisma.producto.delete({ where: { id: req.params.id } });
+    await tx.producto.delete({ where: { id: productoId } });
+    return null;
+  });
+  if (desactivado) return res.json({ ...serialize(desactivado), _desactivado: true });
   res.status(204).send();
 }
 
@@ -264,10 +268,10 @@ const filaImportSchema = z.object({
   codigoBarras: z.string({ required_error: "Código de barras obligatorio" }).trim().min(1, "Código de barras obligatorio"),
   nombre: z.string().trim().min(1, "Nombre obligatorio"),
   categoria: z.preprocess((v) => (v === "" ? null : v), z.string().trim().optional().nullable()),
-  precioCompra: z.preprocess(vacioAUndefined, z.coerce.number().nonnegative("Precio de compra inválido").optional()),
+  precioCompra: z.preprocess(vacioAUndefined, montoEnPesos.optional()),
   precioVenta: z.preprocess(
     (v) => (v === "" || v == null ? undefined : v),
-    z.coerce.number().nonnegative("Precio de venta inválido")
+    montoEnPesos
   ),
   stock: z.preprocess(vacioAUndefined, z.coerce.number().int().nonnegative("Stock inválido").optional()),
   stockMinimo: z.preprocess(vacioAUndefined, z.coerce.number().int().nonnegative("Stock mínimo inválido").optional()),
@@ -372,22 +376,20 @@ async function importar(req, res) {
         resultados.push({ fila, codigoBarras: actualizado.codigoBarras, ok: true, accion: "actualizado", nota });
       } else {
         const unidadFinal = unidadId ?? unidadDefecto?.id;
-        if (!unidadFinal) throw new Error("No hay unidades configuradas en el sistema");
+        if (!unidadFinal) throw new HttpError(409, "No hay unidades configuradas en el sistema");
         const creado = await prisma.$transaction(async (tx) => {
           await bloquearCatalogoBodegas(tx);
-          const p = await tx.producto.create({
-            data: {
-              precioCompra: 0,
-              stock: 0,
-              stockMinimo: 0,
-              ...Object.fromEntries(Object.entries(datos).filter(([, v]) => v !== undefined)),
-              sku: randomUUID(),
-              proveedorId: proveedorId ?? null,
-              categoriaId: categoriaId ?? null,
-              unidadId: unidadFinal,
-            },
+          const { stock = 0, ...campos } = datos;
+          const p = await crearProductoCatalogo(tx, {
+            precioCompra: 0,
+            stockMinimo: 0,
+            ...Object.fromEntries(Object.entries(campos).filter(([, v]) => v !== undefined)),
+            sku: randomUUID(),
+            proveedorId: proveedorId ?? null,
+            categoriaId: categoriaId ?? null,
+            unidadId: unidadFinal,
           });
-          await inicializarStockProducto(tx, p.id, p.stock);
+          await inicializarStockProducto(tx, p.id, stock, req.user.id);
           return p;
         });
         creados++;
@@ -395,7 +397,13 @@ async function importar(req, res) {
       }
     } catch (e) {
       errores++;
-      resultados.push({ fila, codigoBarras: datos.codigoBarras, ok: false, error: e.code === "P2002" ? "El código de barras ya existe" : e.message || "Error al guardar" });
+      // Solo se muestran los mensajes pensados para el usuario; un error inesperado se
+      // registra en el servidor y la fila informa un texto genérico (sin detalles internos).
+      let error = "No se pudo guardar la fila";
+      if (e.code === "P2002") error = "El código de barras ya existe";
+      else if (e instanceof HttpError) error = e.message;
+      else console.error(`Importación de productos, fila ${fila}:`, e);
+      resultados.push({ fila, codigoBarras: datos.codigoBarras, ok: false, error });
     }
   }
 

@@ -1,8 +1,10 @@
 import { ETIQUETAS_PAGO, type Devolucion, type Venta } from "../types/venta";
-import { DOCUMENTOS_VENTA, type Negocio } from "../types/negocio";
+import { esDocumentoInterno, nombreDocumento, type Negocio } from "../types/negocio";
 import { LOCALE, moneyCaja as money } from "./format";
+import { estadosCotizacion, type Cotizacion } from "@/api/cotizaciones";
+import { fechaCompleta } from "./fechas";
 
-function escapeHtml(value: string) {
+export function escapeHtml(value: string) {
   const div = document.createElement("div");
   div.textContent = value;
   return div.innerHTML;
@@ -11,13 +13,31 @@ function escapeHtml(value: string) {
 export const folioComprobante = (id: string) => id.slice(0, 8).toUpperCase();
 export const folioNotaCredito = (id: string) => `NC-${id.toUpperCase()}`;
 
+export function printCotizacion(cotizacion: Cotizacion, negocio: Negocio) {
+  const filas = cotizacion.items.map((it) => `
+    <div class="fila"><span>${escapeHtml(it.nombre)}</span><span>${money((it.precio * it.cantidad - it.descuento) / 100)}</span></div>
+    <div class="fila detalle"><span>${it.cantidad} × ${money(it.precio / 100)}${it.descuento ? ` · descuento ${money(it.descuento / 100)}` : ""}</span></div>`).join("");
+  return printDocument(negocio, {
+    titulo: "COTIZACIÓN", folio: String(cotizacion.folio), fecha: cotizacion.fecha,
+    contenido: `
+      <div class="meta">Cliente · ${escapeHtml(cotizacion.clienteNombre)}</div>
+      <div class="meta">Válida hasta · ${fechaCompleta(cotizacion.vigenteHasta)}</div>
+      <div class="meta">Estado · ${estadosCotizacion[cotizacion.estado]}</div>
+      <div class="linea"></div>${filas}<div class="linea"></div>
+      ${cotizacion.descuento ? `<div class="fila"><span>Descuento global</span><span>−${money(cotizacion.descuento)}</span></div>` : ""}
+      <div class="fila total"><span>TOTAL</span><span>${money(cotizacion.total)}</span></div>
+      ${cotizacion.observaciones ? `<div class="meta">${escapeHtml(cotizacion.observaciones)}</div>` : ""}`,
+    aviso: "Cotización comercial. Sujeta a disponibilidad de stock.",
+  });
+}
+
 function printDocument(negocio: Negocio, documento: {
   titulo: string;
   folio: string;
   fecha: string;
   contenido: string;
   mensaje?: string;
-  aviso: string;
+  aviso?: string;
 }) {
   const ventana = window.open("", "_blank", "width=380,height=600");
   if (!ventana) return false;
@@ -73,7 +93,7 @@ function printDocument(negocio: Negocio, documento: {
   <div class="sub">N° ${escapeHtml(folio)}<br />${fecha}</div>
   ${contenido}
   ${mensaje ? `<div class="footer">${escapeHtml(mensaje)}</div>` : ""}
-  <div class="aviso">${escapeHtml(aviso)}</div>
+  ${aviso ? `<div class="aviso">${escapeHtml(aviso)}</div>` : ""}
   <script>
     window.onload = function () {
       window.print();
@@ -111,7 +131,7 @@ export function printTicket(venta: Venta, negocio: Negocio) {
     : "";
 
   return printDocument(negocio, {
-    titulo: `${DOCUMENTOS_VENTA[venta.tipoDocumento ?? "interno"].toUpperCase()} DE VENTA`,
+    titulo: `${nombreDocumento(venta.tipoDocumento).toUpperCase()} DE VENTA`,
     folio: folioComprobante(venta.id),
     fecha: venta.fecha,
     contenido: `
@@ -125,7 +145,7 @@ export function printTicket(venta: Venta, negocio: Negocio) {
       <div class="linea"></div>
       ${pagos}`,
     mensaje: negocio.mensajeTicket || "¡Gracias por su compra!",
-    aviso: "Comprobante interno. No válido como boleta.",
+    aviso: esDocumentoInterno(venta.tipoDocumento) ? `${nombreDocumento(venta.tipoDocumento)}. No válido como boleta.` : undefined,
   });
 }
 

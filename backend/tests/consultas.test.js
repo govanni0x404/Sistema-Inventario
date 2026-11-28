@@ -57,9 +57,8 @@ describe("Consultas — márgenes por producto", () => {
   test("identifica el costo estimado cuando la venta histórica no lo registró", async () => {
     await prisma.venta.create({
       data: {
-        subtotal: 20,
         total: 20,
-        items: { create: { productoId: producto.id, cantidad: 1, precioUnitario: 20, subtotal: 20 } },
+        items: { create: { productoId: producto.id, cantidad: 1, precioUnitario: 20 } },
       },
     });
     await prisma.producto.update({ where: { id: producto.id }, data: { precioCompra: 8 } });

@@ -1,0 +1,11 @@
+const { Router } = require("express");
+const asyncHandler = require("../middleware/asyncHandler");
+const requireSeccion = require("../middleware/requireSeccion");
+const controller = require("../controllers/cotizaciones.controller");
+const router = Router();
+router.use(requireSeccion("caja"));
+router.get("/", asyncHandler(controller.listar));
+router.get("/:id", asyncHandler(controller.obtener));
+router.post("/", asyncHandler(controller.crear));
+router.post("/:id/anular", asyncHandler(controller.anular));
+module.exports = router;

@@ -87,10 +87,12 @@ export default function CajaCatalogo({ productos, agregar, precio, bloqueado, en
                           regresarABusqueda.current = true;
                           agregar(producto);
                         }}
-                        className="flex h-full w-full flex-col gap-2 rounded-xl border bg-card p-2 text-left transition-colors enabled:hover:border-primary enabled:hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-65">
+                        className="flex h-full w-full flex-col gap-2 rounded-xl border bg-card p-2 text-left transition-[color,background-color,border-color,box-shadow] enabled:hover:border-primary enabled:hover:bg-primary/5 enabled:hover:shadow-card-hover focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-65">
                         <ImagenProducto key={producto.imagenUrl ?? ""} url={producto.imagenUrl} className="aspect-[4/3] w-full" />
-                        <span className="text-sm leading-snug font-semibold [overflow-wrap:anywhere]">{producto.nombre}</span>
-                        {producto.codigoBarras && <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{producto.codigoBarras}</span>}
+                        <span className="min-w-0">
+                          <span className="block font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{producto.codigoBarras || "Sin código"}</span>
+                          <span className="block text-sm leading-snug font-semibold [overflow-wrap:anywhere]">{producto.nombre}</span>
+                        </span>
                         <span className="mt-auto flex flex-wrap items-baseline justify-between gap-1 pt-0.5">
                           {producto.mostrarPrecio !== false && <span className="text-sm font-semibold tabular-nums">{money(precio(producto))}</span>}
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

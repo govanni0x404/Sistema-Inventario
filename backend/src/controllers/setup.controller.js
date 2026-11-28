@@ -1,9 +1,11 @@
+const { createHash, timingSafeEqual } = require("node:crypto");
 const bcrypt = require("bcryptjs");
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
-const { sign } = require("../lib/jwt");
+const { firmarSesion } = require("../lib/jwt");
 const { registrarAuditoria } = require("../lib/auditoria");
+const { passwordSchema } = require("../lib/password");
 const { negocioSchema, guardarNegocio, obtenerNegocio } = require("./negocio.controller");
 const { serializeUsuario } = require("./auth.controller");
 
@@ -22,9 +24,16 @@ const setupSchema = z.object({
   admin: z.object({
     nombre: z.string().trim().min(1, "Tu nombre es obligatorio"),
     email: z.string().trim().toLowerCase().email("Correo inválido"),
-    password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+    password: passwordSchema,
   }),
 });
+
+// Compara en tiempo constante (sobre los hashes, así ambos lados miden lo mismo).
+function claveCorrecta(recibida, esperada) {
+  const a = createHash("sha256").update(String(recibida ?? "")).digest();
+  const b = createHash("sha256").update(esperada).digest();
+  return timingSafeEqual(a, b);
+}
 
 async function necesitaConfiguracion(db = prisma) {
   return (await db.usuario.count()) === 0;
@@ -34,7 +43,11 @@ async function necesitaConfiguracion(db = prisma) {
 // configuración inicial) y el nombre del negocio (para la pantalla de login).
 async function estado(req, res) {
   const [pendiente, negocio] = await Promise.all([necesitaConfiguracion(), obtenerNegocio()]);
-  res.json({ necesitaConfiguracion: pendiente, requiereClave: Boolean(process.env.SETUP_CLAVE), nombreNegocio: negocio.nombre });
+  res.json({
+    necesitaConfiguracion: pendiente,
+    requiereClave: Boolean(process.env.SETUP_CLAVE) || process.env.NODE_ENV === "production",
+    nombreNegocio: negocio.nombre,
+  });
 }
 
 // POST /api/setup — público, pero SOLO funciona mientras no exista ningún usuario.
@@ -46,7 +59,12 @@ async function configurar(req, res) {
     return res.status(400).json({ error: "Datos inválidos", detalles: parsed.error.flatten() });
   }
   const { clave, negocio, admin } = parsed.data;
-  if (process.env.SETUP_CLAVE && clave !== process.env.SETUP_CLAVE) {
+  // En producción la clave es obligatoria: sin SETUP_CLAVE cualquiera podría reclamar
+  // una instalación recién publicada.
+  if (!process.env.SETUP_CLAVE && process.env.NODE_ENV === "production") {
+    throw new HttpError(403, "La configuración inicial está bloqueada: define SETUP_CLAVE en el servidor.");
+  }
+  if (process.env.SETUP_CLAVE && !claveCorrecta(clave, process.env.SETUP_CLAVE)) {
     throw new HttpError(403, "Clave de instalación incorrecta");
   }
 
@@ -85,7 +103,7 @@ async function configurar(req, res) {
     return creado;
   });
 
-  const token = sign({ id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol.nombre });
+  const token = firmarSesion(usuario);
   res.status(201).json({ token, usuario: await serializeUsuario(usuario) });
 }
 

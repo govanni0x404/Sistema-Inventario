@@ -90,8 +90,8 @@ export default function UsuariosPage() {
   };
 
   const confirmarReset = async () => {
-    if (!resetTarget || nuevaPassword.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres");
+    if (!resetTarget || nuevaPassword.length < 8) {
+      toast.error("La contraseña debe tener al menos 8 caracteres");
       return;
     }
     setSaving(true);
@@ -334,7 +334,7 @@ export default function UsuariosPage() {
           </DialogHeader>
           <div className="space-y-1.5">
             <Label>Nueva contraseña</Label>
-            <Input type="password" value={nuevaPassword} onChange={(e) => setNuevaPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+            <Input type="password" value={nuevaPassword} onChange={(e) => setNuevaPassword(e.target.value)} placeholder="Mínimo 8 caracteres" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetTarget(null)}>

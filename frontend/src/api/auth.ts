@@ -5,5 +5,5 @@ export const authApi = {
   solicitarRecuperacion: (email: string) => api.post<{ ok: boolean }>("/auth/recuperacion", { email }),
   login: (email: string, password: string) => api.post<LoginResponse>("/auth/login", { email, password }),
   me: () => api.get<Usuario>("/auth/me"),
-  cambiarPassword: (actual: string, nueva: string) => api.put<{ ok: true }>("/auth/password", { actual, nueva }),
+  cambiarPassword: (actual: string, nueva: string) => api.put<{ ok: true; token?: string }>("/auth/password", { actual, nueva }),
 };

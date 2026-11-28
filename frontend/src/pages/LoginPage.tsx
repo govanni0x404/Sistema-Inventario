@@ -75,18 +75,19 @@ export default function LoginPage() {
   const titulo = recuperar ? "Recuperar clave" : inicial ? "Crear cuenta" : "Iniciar sesión";
   return (
     <main className="access-page relative grid min-h-dvh place-items-center px-4 py-16 sm:px-8">
-      <div className="absolute top-4 right-4 rounded-xl border bg-card shadow-sm"><ThemeToggle /></div>
-      <section aria-labelledby="access-title" className="grid w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-white/25 bg-card text-card-foreground shadow-[0_24px_80px_#10222f66] md:max-w-4xl md:grid-cols-[0.95fr_1fr]">
+      <div className="absolute top-4 right-4 rounded-xl border bg-card/90 shadow-card backdrop-blur-sm"><ThemeToggle /></div>
+      <section aria-labelledby="access-title" className="grid w-full max-w-lg overflow-hidden rounded-[1.75rem] border border-white/25 bg-card text-card-foreground shadow-[0_24px_80px_#0a1e2a73,0_0_0_1px_rgb(255_255_255/0.04)] md:max-w-4xl md:grid-cols-[0.95fr_1fr]">
         <div className="access-brand flex flex-col justify-end px-6 py-7 text-hero-foreground sm:px-9 md:min-h-[31rem] md:p-10">
-          <img src="/favicon.svg" alt="" width={48} height={48} className="mb-3 size-10 md:mb-5 md:size-12" />
+          <img src="/favicon.svg" alt="" width={48} height={48} className="mb-3 size-10 drop-shadow-[0_6px_16px_rgb(125_211_238/0.45)] md:mb-5 md:size-12" />
           <p className="font-display text-4xl font-bold leading-none tracking-tight md:text-6xl">{SYSTEM_NAME}</p>
           <p className="mt-2 text-sm text-hero-muted md:mt-4 md:text-base">Punto de venta e inventario</p>
+          <div aria-hidden="true" className="accent-line mt-4 h-1 w-16 rounded-full md:mt-6" />
         </div>
-        <div className="self-center px-6 py-7 sm:p-9 md:p-10">
+        <div className="relative self-center px-6 py-7 sm:p-9 md:p-10">
           <h1 id="access-title" className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{titulo}</h1>
           {recuperar ? <p className="mt-2 text-sm text-muted-foreground">Solicita al administrador que restablezca tu clave.</p>
             : inicial && <p className="mt-2 text-sm text-muted-foreground">Crea la primera cuenta de administrador.</p>}
-          {enviado ? <p role="status" className="my-6 rounded-lg bg-muted p-4 text-sm">Si el correo pertenece a una cuenta activa, el administrador podrá revisar tu solicitud en Auditoría.</p> : (
+          {enviado ? <p role="status" className="my-6 rounded-lg border border-success/25 bg-success/10 p-4 text-sm">Si el correo pertenece a una cuenta activa, el administrador podrá revisar tu solicitud en Auditoría.</p> : (
             <form onSubmit={enviar} className="mt-7 space-y-5" aria-busy={ocupado}>
               <div className="space-y-2">
                 <Label htmlFor="email">Correo</Label>
@@ -107,8 +108,8 @@ export default function LoginPage() {
                   <Input id="clave-instalacion" type="password" value={claveInstalacion} onChange={(e) => setClaveInstalacion(e.target.value)} required />
                 </div>
               )}
-              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="h-12 w-full" disabled={ocupado || (!estado && !error)}>{ocupado ? "Un momento…" : recuperar ? "Enviar solicitud" : inicial ? "Crear cuenta e ingresar" : "Ingresar"}<ArrowRight size={16} /></Button>
+              {error && <p role="alert" className="rounded-lg border border-destructive/25 bg-destructive/8 px-3 py-2 text-sm text-destructive">{error}</p>}
+              <Button type="submit" className="h-12 w-full text-base font-semibold" disabled={ocupado || (!estado && !error)}>{ocupado ? "Un momento…" : recuperar ? "Enviar solicitud" : inicial ? "Crear cuenta e ingresar" : "Ingresar"}<ArrowRight size={16} /></Button>
             </form>
           )}
           <div className="mt-5 text-center"><button type="button" disabled={ocupado} onClick={cambiarModo} className="text-sm font-semibold text-primary underline-offset-4 hover:underline">{recuperar ? "Volver al acceso" : "¿Olvidaste tu clave?"}</button></div>

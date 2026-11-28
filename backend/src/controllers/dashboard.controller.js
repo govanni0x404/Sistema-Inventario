@@ -1,5 +1,7 @@
 const prisma = require("../lib/prisma");
 const { inicioDeDia, finDeDia, claveDia, resolverRango, sumarDias } = require("../lib/rangoFechas");
+const { stockCajaInclude, conStockCaja } = require("../lib/stockBodega");
+const { agruparProductosVendidos } = require("../lib/reportesVenta");
 
 // GET /api/dashboard?dias=7|30|90 o ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD — resumen agregado
 // para la pantalla principal. "Ventas de hoy" siempre es el día calendario actual (referencia
@@ -25,21 +27,15 @@ async function resumen(req, res) {
     prisma.venta.aggregate({ where: ventasDelRango, _sum: { total: true }, _count: true }),
     prisma.producto.findMany({
       where: { activo: true },
-      select: { id: true, nombre: true, codigoBarras: true, stock: true, stockMinimo: true, precioCompra: true, unidad: { select: { nombre: true } } },
-    }),
+      select: { id: true, nombre: true, codigoBarras: true, stockBodegas: stockCajaInclude, stockMinimo: true, precioCompra: true, unidad: { select: { nombre: true } } },
+    }).then((filas) => filas.map(conStockCaja)),
     prisma.venta.findMany({ where: ventasDelRango, select: { fecha: true, total: true } }),
     prisma.ventaPago.groupBy({
       by: ["metodoPago"],
       where: { venta: ventasDelRango },
       _sum: { monto: true },
     }),
-    prisma.ventaItem.groupBy({
-      by: ["productoId"],
-      where: { venta: ventasDelRango },
-      _sum: { cantidad: true, subtotal: true },
-      orderBy: { _sum: { subtotal: "desc" } },
-      take: 5,
-    }),
+    agruparProductosVendidos(rangoInicio, rangoFin, 5),
     prisma.venta.groupBy({
       by: ["usuarioId"],
       where: ventasDelRango,
@@ -88,8 +84,8 @@ async function resumen(req, res) {
     productoId: it.productoId,
     nombre: productoPorId.get(it.productoId)?.nombre ?? "Producto eliminado",
     codigoBarras: productoPorId.get(it.productoId)?.codigoBarras ?? null,
-    cantidad: it._sum.cantidad,
-    subtotal: Number(it._sum.subtotal),
+    cantidad: it.cantidad,
+    subtotal: it.subtotal,
   }));
 
   const ventasPeriodoCount = ventasPeriodoAgg._count;

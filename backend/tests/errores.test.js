@@ -89,11 +89,28 @@ describe("Errores claros en vez de 500", () => {
   });
   test("listar ventas respeta el límite y devuelve las más recientes", async () => {
     for (let i = 0; i < 3; i++) {
-      await prisma.venta.create({ data: { subtotal: 1, total: 1, fecha: new Date(2026, 0, 1 + i) } });
+      await prisma.venta.create({ data: { total: 1, fecha: new Date(2026, 0, 1 + i) } });
     }
     const res = await request(app).get("/api/ventas?limite=2").set(auth());
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(new Date(res.body[0].fecha).getDate()).toBe(3);
+  });
+
+  test("un número que no cabe en la columna responde 400, no 500", async () => {
+    const errorHandler = require("../src/middleware/errorHandler");
+    const unidad = await prisma.unidad.create({ data: { nombre: "Unidad desborde" } });
+    let error;
+    try {
+      await require("../src/lib/stockBodega").crearProductoCatalogo(prisma, {
+        sku: "SKU-DESBORDE", nombre: "X", precioCompra: 0, precioVenta: 1e12, unidadId: unidad.id,
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeDefined();
+    const res = { status(codigo) { this.codigo = codigo; return this; }, json(cuerpo) { this.cuerpo = cuerpo; } };
+    errorHandler(error, {}, res);
+    expect(res.codigo).toBe(400);
   });
 });

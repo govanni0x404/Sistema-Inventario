@@ -89,12 +89,13 @@ export default function MovimientoCajaDialog({ turnoCajaId, tipoInicial, onClose
             </button>
           </div>
           <div className="space-y-1.5">
-            <Label>Monto</Label>
-            <Input value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0" />
+            <Label htmlFor="movimiento-caja-monto">Monto</Label>
+            <Input id="movimiento-caja-monto" value={monto} onChange={(e) => setMonto(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="0" />
           </div>
           <div className="space-y-1.5">
-            <Label>Motivo</Label>
+            <Label htmlFor="movimiento-caja-motivo">Motivo</Label>
             <Input
+              id="movimiento-caja-motivo"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               placeholder={tipo === "retiro" ? "Ej. Pago a proveedor" : "Ej. Sencillo para cambio"}

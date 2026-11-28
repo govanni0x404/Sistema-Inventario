@@ -174,7 +174,7 @@ function DetalleVenta({
                         <div className="font-body text-xs text-muted-foreground mt-0.5">
                           {it.cantidad} × {money(it.precioUnitario)}
                           {it.producto?.codigoBarras && <span className="ml-2 font-mono">{it.producto.codigoBarras}</span>}
-                          {it.descuento > 0 && <span className="ml-2 text-emerald-600">-{money(it.descuento)} desc.</span>}
+                          {it.descuento > 0 && <span className="ml-2 text-success">-{money(it.descuento)} desc.</span>}
                           {devuelto > 0 && (
                             <span className="ml-2 text-destructive">· {devuelto} devuelta{devuelto > 1 ? "s" : ""}</span>
                           )}
@@ -194,7 +194,7 @@ function DetalleVenta({
                     <span>Subtotal</span>
                     <span className="font-mono">{money(venta.subtotal)}</span>
                   </div>
-                  <div className="flex items-center justify-between font-body text-sm text-emerald-600">
+                  <div className="flex items-center justify-between font-body text-sm text-success">
                     <span>Descuento</span>
                     <span className="font-mono">-{money(venta.descuento)}</span>
                   </div>

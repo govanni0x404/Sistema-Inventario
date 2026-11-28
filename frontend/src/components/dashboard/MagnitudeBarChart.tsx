@@ -29,7 +29,7 @@ export default function MagnitudeBarChart({
             </div>
             <div aria-hidden="true" className="h-2.5 overflow-hidden rounded-full bg-muted">
               <div
-                className={cn("h-full rounded-full", item.value < 0 ? "bg-destructive" : "bg-primary")}
+                className={cn("h-full rounded-full", item.value < 0 ? "bg-destructive" : "bg-linear-to-r from-primary/65 to-primary")}
                 style={{ width: `${pct}%` }}
               />
             </div>

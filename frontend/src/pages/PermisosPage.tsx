@@ -20,6 +20,8 @@ const ETIQUETAS: Record<Seccion, { label: string; desc: string }> = {
   proveedores: { label: "Proveedores", desc: "Gestionar proveedores" },
   historial: { label: "Historial", desc: "Ver historial de ventas" },
   consultas: { label: "Consultas", desc: "Ver reportes: productos más vendidos, ventas por usuario y por forma de pago" },
+  compras: { label: "Compras", desc: "Emitir órdenes, recibir productos y registrar devoluciones a proveedores" },
+  planificacion: { label: "Reposición y valorización", desc: "Ver costos y reposición, y ajustar los mínimos por bodega" },
 };
 
 const ROL_LABEL: Record<string, string> = { cajero: "Cajero" };

@@ -57,7 +57,7 @@ export default function SalesLineChart({ data, metric }: { data: Point[]; metric
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="size-full overflow-visible">
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop stopColor="var(--primary)" stopOpacity="0.22" />
+                <stop stopColor="var(--primary)" stopOpacity="0.32" />
                 <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
               </linearGradient>
             </defs>
@@ -65,13 +65,13 @@ export default function SalesLineChart({ data, metric }: { data: Point[]; metric
               <line key={tick} x1={0} x2={W} y1={H * tick / 4} y2={H * tick / 4} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
             ))}
             <polygon points={area} fill={`url(#${gradientId})`} />
-            <polyline points={values} fill="none" stroke="var(--primary)" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+            <polyline points={values} fill="none" stroke="var(--primary)" strokeWidth={2.75} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
             {point && (
               <line x1={xFor(active)} x2={xFor(active)} y1={0} y2={H} stroke="var(--primary)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
             )}
           </svg>
           {point && (
-            <span className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-primary"
+            <span className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-primary shadow-[0_0_0_4px_color-mix(in_srgb,var(--primary)_22%,transparent)]"
               style={{ left: `${xFor(active) / W * 100}%`, top: `${yFor(point[metric]) / H * 100}%` }}
             />
           )}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, AlertTriangle, Download } from "lucide-react";
+import { Search, AlertTriangle, ArrowLeftRight, Boxes, Download, PackageSearch, PackageX } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { productosApi } from "../api/productos";
 import { ApiError } from "../api/client";
@@ -16,6 +16,11 @@ import { hoyStr } from "../lib/fechas";
 import { matchesSearch, normalizeSearch } from "../lib/search";
 import { useAuth } from "../context/AuthContext";
 import { tieneAcceso } from "../components/nav-data";
+import { cn } from "@/lib/utils";
+
+const stockBajo = (producto: Producto) => producto.activo && producto.inventariable && producto.stock <= producto.stockMinimo;
+const sinExistencias = (producto: Producto) => producto.activo && producto.inventariable && producto.stock <= 0;
+const numero = new Intl.NumberFormat("es-CL");
 
 export default function StockPage() {
   const [productos, setProductos] = useState<Producto[] | null>(null);
@@ -23,13 +28,16 @@ export default function StockPage() {
   const [q, setQ] = useState("");
   const [params, setParams] = useSearchParams();
   const { usuario } = useAuth();
-  const soloStockBajo = params.get("bajo") === "1";
+  const filtroStock = params.get("agotado") === "1" ? "sin-stock" : params.get("bajo") === "1" ? "bajo" : "todos";
   const puedeAjustar = tieneAcceso(usuario, { seccion: "bodega" });
+  const puedePlanificar = tieneAcceso(usuario, { seccion: "planificacion" });
 
-  const toggleStockBajo = () => {
+  const cambiarFiltro = (filtro: typeof filtroStock) => {
     const siguientes = new URLSearchParams(params);
-    if (soloStockBajo) siguientes.delete("bajo");
-    else siguientes.set("bajo", "1");
+    siguientes.delete("bajo");
+    siguientes.delete("agotado");
+    if (filtro === "bajo") siguientes.set("bajo", "1");
+    if (filtro === "sin-stock") siguientes.set("agotado", "1");
     setParams(siguientes);
   };
 
@@ -51,10 +59,15 @@ export default function StockPage() {
     const term = normalizeSearch(q);
     return productos
       .filter((p) => matchesSearch(term, [p.nombre, p.categoria?.nombre, p.codigoBarras]))
-      .filter((p) => !soloStockBajo || (p.activo && p.stock <= p.stockMinimo));
-  }, [productos, q, soloStockBajo]);
+      .filter((p) => filtroStock === "todos" || (filtroStock === "bajo" ? stockBajo(p) : sinExistencias(p)));
+  }, [productos, q, filtroStock]);
 
-  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, `${q}-${soloStockBajo}`);
+  const { page, setPage, pageItems, totalItems, pageSize } = usePagedList(filtered, 10, `${q}-${filtroStock}`);
+  const indicadores = productos && [
+    { id: "todos", titulo: "Productos del catálogo", valor: productos.length, icono: Boxes },
+    { id: "bajo", titulo: "Stock bajo", valor: productos.filter(stockBajo).length, icono: AlertTriangle },
+    { id: "sin-stock", titulo: "Sin existencias", valor: productos.filter(sinExistencias).length, icono: PackageX },
+  ] as const;
 
   const exportar = () => {
     if (filtered.length === 0) return;
@@ -75,20 +88,26 @@ export default function StockPage() {
 
   return (
     <div>
-      {puedeAjustar && (
-        <Link to="/bodega" className="mb-3 inline-block text-sm text-primary underline">
-          Registrar entrada o salida
-        </Link>
-      )}
+      {indicadores && <div className="mb-4 grid grid-cols-3 gap-2 sm:gap-3" role="group" aria-label="Filtrar por nivel de stock">
+        {indicadores.map(({ id, titulo, valor, icono: Icono }) => (
+          <button key={id} type="button" aria-pressed={filtroStock === id} onClick={() => cambiarFiltro(id)}
+            className={cn("grid content-start gap-1 rounded-xl border p-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring sm:p-3",
+              filtroStock === id ? "border-primary/50 bg-primary/8" : "bg-card")}>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground sm:text-sm"><Icono size={15} className="hidden shrink-0 text-primary sm:block" />{titulo}</span>
+            <strong className="font-display text-xl tabular-nums sm:text-2xl">{numero.format(valor)}</strong>
+          </button>
+        ))}
+      </div>}
+      <div className="mb-4 flex flex-wrap gap-2 empty:hidden">
+        {puedeAjustar && <Button asChild size="sm" variant="outline"><Link to="/bodega"><ArrowLeftRight size={14} /> Entradas y salidas</Link></Button>}
+        {puedePlanificar && <Button asChild size="sm" variant="outline"><Link to="/planificacion"><PackageSearch size={14} /> Reposición</Link></Button>}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input className="pl-9" aria-label="Buscar productos" placeholder="Buscar producto, código de barras o familia" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <Button variant={soloStockBajo ? "default" : "outline"} onClick={toggleStockBajo} aria-pressed={soloStockBajo}>
-          <AlertTriangle size={14} /> Stock bajo
-        </Button>
         <Button variant="outline" onClick={exportar} disabled={filtered.length === 0}>
           <Download size={14} /> Exportar CSV
         </Button>
@@ -123,7 +142,7 @@ export default function StockPage() {
             </TableHeader>
             <TableBody>
               {pageItems.map((p) => {
-                const low = p.activo && p.stock <= p.stockMinimo;
+                const low = stockBajo(p);
                 return (
                   <TableRow key={p.id}>
                     <TableCell>
@@ -131,6 +150,7 @@ export default function StockPage() {
                         <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
                         {p.codigoBarras && <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{p.codigoBarras}</span>}
                         {!p.activo && <Badge variant="secondary">Inactivo</Badge>}
+                        {!p.inventariable && <Badge variant="secondary">Sin control de stock</Badge>}
                         {low && (
                           <Badge variant="warning">
                             <AlertTriangle size={11} /> Stock bajo

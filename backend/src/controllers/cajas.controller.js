@@ -21,7 +21,7 @@ function serializar({ turnos, ...caja }) {
 
 const include = {
   turnos: {
-    where: { estado: "abierto" },
+    where: { fechaCierre: null },
     select: { id: true, montoInicial: true, tipoTurno: { select: { nombre: true } } },
     take: 1,
   },

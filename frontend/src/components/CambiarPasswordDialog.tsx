@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
 import { authApi } from "../api/auth";
-import { ApiError } from "../api/client";
+import { ApiError, setToken } from "../api/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +35,9 @@ export default function CambiarPasswordDialog({ open, onClose }: { open: boolean
     }
     setGuardando(true);
     try {
-      await authApi.cambiarPassword(actual, nueva);
+      const { token } = await authApi.cambiarPassword(actual, nueva);
+      // El servidor invalida la sesión anterior y entrega un token nuevo.
+      if (token) setToken(token);
       toast.success("Contraseña actualizada");
       cerrar();
     } catch (err) {

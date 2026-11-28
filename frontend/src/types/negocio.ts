@@ -1,6 +1,13 @@
 export const DOCUMENTOS_VENTA = { interno: "Comprobante interno" } as const;
 export type DocumentoVenta = keyof typeof DOCUMENTOS_VENTA;
 
+/** Nombre legible del documento de venta; si el tipo no se conoce, cae en el comprobante interno. */
+export const nombreDocumento = (tipo: DocumentoVenta | null | undefined) =>
+  DOCUMENTOS_VENTA[tipo ?? "interno"] ?? DOCUMENTOS_VENTA.interno;
+
+/** Los documentos internos no tienen validez tributaria y así se indica al imprimirlos. */
+export const esDocumentoInterno = (tipo: DocumentoVenta | null | undefined) => (tipo ?? "interno") === "interno";
+
 export interface Negocio {
   nombre: string;
   rut: string | null;

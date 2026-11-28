@@ -4,6 +4,7 @@ import { Search, Plus, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { clientesApi } from "../api/clientes";
 import { ApiError } from "../api/client";
 import type { Cliente, ClienteConVentas } from "../types/cliente";
+import { ETIQUETAS_PAGO } from "../types/venta";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -127,13 +128,24 @@ export default function ClientesPage() {
                 <Fragment key={c.id}>
                   <TableRow className="cursor-pointer" onClick={() => toggleExpand(c)}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 rounded text-left hover:text-primary focus-visible:underline"
+                        aria-expanded={expanded === c.id}
+                        aria-controls={`cliente-detalle-${c.id}`}
+                        aria-label={`${expanded === c.id ? "Ocultar" : "Ver"} historial de compras de ${c.nombre}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpand(c);
+                        }}
+                      >
                         <ChevronDown
                           size={14}
+                          aria-hidden="true"
                           className={cn("text-muted-foreground transition-transform shrink-0", expanded === c.id && "rotate-180")}
                         />
                         <span className="font-body font-medium text-sm text-foreground">{c.nombre}</span>
-                      </div>
+                      </button>
                     </TableCell>
                     <TableCell className="font-body text-xs text-muted-foreground">
                       {[c.telefono, c.email, c.direccion].filter(Boolean).join(" · ") || "Sin datos adicionales"}
@@ -167,7 +179,7 @@ export default function ClientesPage() {
                     </TableCell>
                   </TableRow>
                   {expanded === c.id && (
-                    <TableRow className="hover:bg-transparent">
+                    <TableRow id={`cliente-detalle-${c.id}`} className="hover:bg-transparent">
                       <TableCell colSpan={3} className="bg-muted/40 whitespace-normal py-3">
                         <div className="font-body text-xs font-medium mb-2 text-muted-foreground">Historial de compras</div>
                         {detalleCargando && <div className="font-body text-xs text-muted-foreground">Cargando…</div>}
@@ -179,7 +191,7 @@ export default function ClientesPage() {
                             {detalle.ventas.map((v) => (
                               <div key={v.id} className="flex justify-between font-mono text-xs text-muted-foreground">
                                 <span>
-                                  {new Date(v.fecha).toLocaleDateString(LOCALE)} · {v.pagos.map((p) => p.metodoPago).join(" + ")} · {v.items.length} ítem(s)
+                                  {new Date(v.fecha).toLocaleDateString(LOCALE)} · {v.pagos.map((p) => ETIQUETAS_PAGO[p.metodoPago] ?? p.metodoPago).join(" + ")} · {v.items.length} ítem(s)
                                 </span>
                                 <span className="text-primary font-semibold">{money(v.total)}</span>
                               </div>

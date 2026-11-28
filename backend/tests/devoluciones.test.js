@@ -1,6 +1,6 @@
 const request = require("supertest");
 const app = require("../src/app");
-const { prisma, resetDb, crearUsuario, crearProducto, crearTipoTurno, crearBodegaPrincipal } = require("./helpers");
+const { prisma, stockDeProducto, resetDb, crearUsuario, crearProducto, crearTipoTurno, crearBodegaPrincipal } = require("./helpers");
 
 describe("Devoluciones: monto reembolsado y arqueo", () => {
   let cajero, producto, tipoTurno, turno;
@@ -98,8 +98,7 @@ describe("Devoluciones: monto reembolsado y arqueo", () => {
       request(app).post(url).set(auth()).send({ items: [item] }),
     ]);
     expect(intentos.map((res) => res.status).sort()).toEqual([201, 409]);
-    const actualizado = await prisma.producto.findUnique({ where: { id: producto.id } });
-    expect(actualizado.stock).toBe(20);
+    expect(await stockDeProducto(producto.id)).toBe(20);
   });
 
   test("una cortesía devuelve el stock pero reembolsa $0 y sin método", async () => {
@@ -193,6 +192,6 @@ describe("Turnos: aperturas simultáneas", () => {
 
     const estados = intentos.map((r) => r.status).sort();
     expect(estados).toEqual([201, 409, 409, 409, 409]);
-    expect(await prisma.turnoCaja.count({ where: { estado: "abierto" } })).toBe(1);
+    expect(await prisma.turnoCaja.count({ where: { fechaCierre: null } })).toBe(1);
   });
 });

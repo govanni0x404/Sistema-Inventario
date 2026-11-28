@@ -61,6 +61,7 @@ app.use("/api/productos", auth, productosRoutes);
 app.use("/api/clientes", auth, clientesRoutes);
 app.use("/api/proveedores", auth, proveedoresRoutes);
 app.use("/api/ventas", auth, ventasRoutes);
+app.use("/api/cotizaciones", auth, require("./routes/cotizaciones.routes"));
 app.use("/api/permisos", auth, requireAdmin, permisosRoutes);
 app.use("/api/usuarios", auth, requireAdmin, usuariosRoutes);
 app.use("/api/dashboard", auth, dashboardRoutes);
@@ -75,6 +76,8 @@ app.use("/api/movimientos-caja", auth, movimientosCajaRoutes);
 app.use("/api/listas-precio", auth, listasPrecioRoutes);
 app.use("/api/consultas", auth, consultasRoutes);
 app.use("/api/bodegas", auth, bodegasRoutes);
+app.use("/api/compras", auth, require("./routes/compras.routes"));
+app.use("/api/planificacion", auth, require("./routes/planificacion.routes"));
 app.use("/api/auditoria", auth, requireAdmin, auditoriaRoutes);
 app.use("/api/negocio", auth, negocioRoutes);
 

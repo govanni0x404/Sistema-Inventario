@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { aCentavos, moneyCaja as money, montoInput } from "@/lib/format";
+import { aCentavos, moneyCaja as money, montoInput, pisoPesosEnteros } from "@/lib/format";
 
 export default function CajaDescuentoDialog({ titulo, base, maximo, actual, cerrar, aplicar }: {
   titulo: string;
@@ -17,9 +17,11 @@ export default function CajaDescuentoDialog({ titulo, base, maximo, actual, cerr
   const [tipo, setTipo] = useState<"monto" | "porcentaje">("monto");
   const [valor, setValor] = useState(actual ? montoInput(actual / 100) : "");
   const numero = Number(valor);
-  const centavos = tipo === "monto" ? aCentavos(numero) : Math.floor(base * aCentavos(numero) / 10_000);
-  const limite = tipo === "monto" ? maximo / 100 : base > 0 ? Math.floor(maximo / base * 10_000) / 100 : 0;
-  const invalido = !Number.isFinite(numero) || numero < 0 || numero > limite || centavos > maximo;
+  // CLP sin centavos: el descuento siempre queda en pesos enteros (el porcentaje se redondea hacia abajo).
+  const centavos = tipo === "monto" ? aCentavos(Math.trunc(numero)) : pisoPesosEnteros(Math.floor(base * aCentavos(numero) / 10_000));
+  const limite = tipo === "monto" ? Math.floor(maximo / 100) : base > 0 ? Math.floor(maximo / base * 10_000) / 100 : 0;
+  const invalido = !Number.isFinite(numero) || numero < 0 || numero > limite || centavos > maximo
+    || (tipo === "monto" && !Number.isInteger(numero));
 
   return (
     <Dialog open onOpenChange={(open) => !open && cerrar()}>
@@ -35,9 +37,9 @@ export default function CajaDescuentoDialog({ titulo, base, maximo, actual, cerr
           </Select>
           <div className="space-y-1.5">
             <Label htmlFor="caja-descuento">{tipo === "monto" ? "Monto del descuento" : "Porcentaje del descuento"}</Label>
-            <Input autoFocus id="caja-descuento" type="number" min={0} step="0.01" inputMode="decimal" value={valor} onChange={(event) => setValor(event.target.value)} placeholder="0" />
+            <Input autoFocus id="caja-descuento" type="number" min={0} step={tipo === "monto" ? "1" : "0.01"} inputMode={tipo === "monto" ? "numeric" : "decimal"} value={valor} onChange={(event) => setValor(event.target.value)} placeholder="0" />
             <p className={invalido ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-              {invalido ? `El límite disponible es ${limite} ${tipo === "monto" ? "pesos" : "%"}.` : `Descuento aplicado ${money(centavos / 100)}`}
+              {invalido ? (tipo === "monto" && valor !== "" && !Number.isInteger(numero) ? "Ingresa un monto en pesos enteros, sin decimales." : `El límite disponible es ${tipo === "monto" ? money(limite) : `${limite.toLocaleString("es-CL")} %`}.`) : `Descuento aplicado ${money(centavos / 100)}`}
             </p>
           </div>
           <DialogFooter>

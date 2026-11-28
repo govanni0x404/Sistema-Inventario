@@ -1,7 +1,7 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
-const { SECCIONES, permisosDeRol } = require("../lib/permisos");
+const { SECCIONES, permisosDeRol, permisoInicial } = require("../lib/permisos");
 const { registrarAuditoria } = require("../lib/auditoria");
 
 // Roles configurables: todos los del catálogo salvo "admin" (nunca se consulta aquí —
@@ -52,7 +52,7 @@ async function actualizar(req, res) {
     for (const c of parsed.data.cambios) {
       const rolId = rolesPorNombre.get(c.rol).id;
       const anterior = await tx.rolPermiso.findUnique({ where: { rolId_seccion: { rolId, seccion: c.seccion } } });
-      const valorAnterior = anterior ? anterior.permitido : true; // sin fila = permitido por defecto
+      const valorAnterior = anterior?.permitido ?? permisoInicial(c.seccion);
 
       await tx.rolPermiso.upsert({
         where: { rolId_seccion: { rolId, seccion: c.seccion } },

@@ -28,14 +28,21 @@ export function setSessionExpiredHandler(fn: (() => void) | null) {
 
 async function request<T>(path: string, options: RequestInit = {}, formato: "json" | "blob" = "json"): Promise<T> {
   const token = getToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    // Una cancelación (AbortController) no es un error de red: se propaga tal cual.
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiError("Error de red", 0);
+  }
 
   if (res.status === 204) return undefined as T;
   if (res.ok && formato === "blob") return await res.blob() as T;
@@ -46,7 +53,7 @@ async function request<T>(path: string, options: RequestInit = {}, formato: "jso
     if (res.status === 401 && token) {
       onSessionExpired?.();
     }
-    throw new ApiError(body?.error || "Error de red", res.status, body?.detalles);
+    throw new ApiError(body?.error || `Error del servidor (${res.status})`, res.status, body?.detalles);
   }
 
   return body as T;

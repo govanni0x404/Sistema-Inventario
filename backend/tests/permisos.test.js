@@ -21,12 +21,15 @@ describe("Permisos", () => {
     expect(res.status).toBe(403);
   });
 
-  test("sin configuración previa, todas las secciones están permitidas por defecto", async () => {
+  test("sin configuración previa conserva los accesos existentes y restringe las secciones nuevas con costos", async () => {
     const res = await request(app).get("/api/permisos").set("Authorization", `Bearer ${admin.token}`);
 
     expect(res.status).toBe(200);
     expect(res.body.roles).toEqual(["cajero"]);
-    expect(Object.values(res.body.permisos.cajero).every((v) => v === true)).toBe(true);
+    const { compras, planificacion, ...accesosExistentes } = res.body.permisos.cajero;
+    expect(compras).toBe(false);
+    expect(planificacion).toBe(false);
+    expect(Object.values(accesosExistentes).every((v) => v === true)).toBe(true);
   });
 
   test("actualizar permisos bloquea al rol afectado, pero el admin nunca se ve afectado", async () => {

@@ -112,7 +112,13 @@ export default function TurnosPage() {
               <TableBody>
                 {pageItems.map((t) => (
                   <TableRow key={t.id} className="cursor-pointer" onClick={() => abrirDetalle(t)}>
-                    <TableCell className="text-sm font-medium">{t.caja.nombre}</TableCell>
+                    <TableCell className="text-sm font-medium">
+                      <button type="button" className="rounded text-left hover:text-primary hover:underline focus-visible:underline"
+                        aria-label={`Ver detalle del turno ${t.tipoTurno.nombre} de ${t.caja.nombre}`} onClick={(event) => {
+                          event.stopPropagation();
+                          abrirDetalle(t);
+                        }}>{t.caja.nombre}</button>
+                    </TableCell>
                     <TableCell className="font-body text-sm font-medium text-foreground">{t.tipoTurno.nombre}</TableCell>
                     <TableCell className="font-body text-xs text-muted-foreground">
                       {new Date(t.fechaApertura).toLocaleString(LOCALE, { dateStyle: "medium", timeStyle: "short" })}

@@ -7,10 +7,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <title>Kardexia</title>
+    <script>
+      // Aplica el tema antes del primer pintado (misma clave y lógica que ThemeContext).
+      (function () {
+        var tema = "system";
+        try {
+          var guardado = localStorage.getItem("inventario_theme");
+          if (guardado === "light" || guardado === "dark" || guardado === "system") tema = guardado;
+        } catch (e) {}
+        var oscuro =
+          tema === "dark" ||
+          (tema === "system" && !!window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", oscuro);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

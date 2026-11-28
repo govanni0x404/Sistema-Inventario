@@ -35,8 +35,19 @@ model Rol {
   @@map("roles")
 }
 
+// La clave del catálogo sobrevive a la ficha para respaldar referencias históricas.
+model IdentidadProducto {
+  id                    String @id @default(uuid())
+  producto              Producto?
+  cotizacionItems       CotizacionItem[]
+  tomaInventarioItems   TomaInventarioItem[]
+
+  @@map("identidades_producto")
+}
+
 model Producto {
-  id              String            @id @default(uuid())
+  id              String            @id
+  identidad       IdentidadProducto @relation(fields: [id], references: [id], onDelete: Restrict, onUpdate: Restrict)
   sku             String            @unique
   codigoBarras    String?           @unique
   nombre          String
@@ -53,7 +64,6 @@ model Producto {
   foto            ProductoImagen?
   precioCompra    Decimal           @db.Decimal(10, 2)
   precioVenta     Decimal           @db.Decimal(10, 2)
-  stock           Int               @default(0)
   stockMinimo     Int               @default(0)
   unidadId        String
   unidad          Unidad            @relation(fields: [unidadId], references: [id])
@@ -69,6 +79,7 @@ model Producto {
   preciosLista    PrecioLista[]
   stockBodegas    StockBodega[]
   historialPreciosLista HistorialPrecioLista[]
+  compraItems     OrdenCompraItem[]
 
   @@index([proveedorId])
   @@index([categoriaId])
@@ -107,10 +118,12 @@ model MovimientoStock {
   productoId      String
   producto        Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
   tipo            String   // "entrada" | "salida"
-  origen          String   @default("manual") // "manual" | "venta" | "devolucion" | "transferencia" | "inventario" | "ajuste"
+  origen          String   @default("manual") // "manual" | "venta" | "devolucion" | "transferencia" | "inventario" | "ajuste" | "compra" | "devolucion_compra" | "saldo_inicial"
   cantidad        Int
   stockResultante Int
   motivo          String?
+  causaMerma      String?
+  costoMerma      Decimal? @db.Decimal(10, 2)
   ventaId         String?
   venta           Venta?   @relation(fields: [ventaId], references: [id])
   usuarioId       String?
@@ -119,12 +132,16 @@ model MovimientoStock {
   bodega          Bodega?  @relation(fields: [bodegaId], references: [id])
   tomaInventarioId String?
   tomaInventario  TomaInventario? @relation(fields: [tomaInventarioId], references: [id], onDelete: SetNull)
+  operacionCompraId String?
+  operacionCompra OperacionCompra? @relation(fields: [operacionCompraId], references: [id], onDelete: Restrict)
   fecha           DateTime @default(now())
 
-  @@index([productoId])
+  @@index([productoId, fecha])
+  @@index([fecha, id])
   @@index([ventaId])
   @@index([bodegaId])
   @@index([tomaInventarioId])
+  @@index([operacionCompraId])
   @@map("movimientos_stock")
 }
 
@@ -136,9 +153,7 @@ model TomaInventario {
   usuarioNombre String
   tipo          String
   motivo        String
-  lineas        Int
-  ajustes       Int
-  items         Json
+  items         TomaInventarioItem[]
   fecha         DateTime          @default(now())
   movimientos   MovimientoStock[]
 
@@ -146,10 +161,26 @@ model TomaInventario {
   @@map("tomas_inventario")
 }
 
-// Cada producto tiene una fila de stock por bodega donde existe. Producto.stock es un
-// total cacheado (suma de StockBodega.cantidad), mantenido en la misma transacción que
-// cualquier cambio a StockBodega — así el resto del código (Caja, alertas de stock bajo,
-// etc.) puede seguir leyendo Producto.stock directamente sin sumar en cada consulta.
+model TomaInventarioItem {
+  tomaId             String
+  toma               TomaInventario @relation(fields: [tomaId], references: [id], onDelete: Cascade)
+  posicion           Int
+  // Conserva la identidad y la descripción del producto en el momento del conteo.
+  productoReferencia String
+  identidadProducto  IdentidadProducto @relation(fields: [productoReferencia], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  nombre             String
+  codigoBarras       String?
+  unidad             String
+  stockEsperado      Int
+  stockContado       Int
+
+  @@id([tomaId, posicion])
+  @@unique([tomaId, productoReferencia])
+  @@index([productoReferencia])
+  @@map("toma_inventario_items")
+}
+
+// El saldo por bodega es la fuente de las existencias. El total se obtiene sumando las filas.
 model StockBodega {
   id         String   @id @default(uuid())
   bodegaId   String
@@ -157,6 +188,7 @@ model StockBodega {
   productoId String
   producto   Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
   cantidad   Int      @default(0)
+  stockMinimo Int?
 
   @@unique([bodegaId, productoId])
   @@index([productoId])
@@ -174,6 +206,7 @@ model Bodega {
   activo      Boolean           @default(true)
   stocks      StockBodega[]
   movimientos MovimientoStock[]
+  compras     OrdenCompra[]
 
   @@map("bodegas")
 }
@@ -187,6 +220,7 @@ model Cliente {
   creadoEn       DateTime        @default(now())
   ventas         Venta[]
   ventasEnEspera VentaEnEspera[]
+  cotizaciones   Cotizacion[]
 
   @@map("clientes")
 }
@@ -199,8 +233,91 @@ model Proveedor {
   contacto  String?
   creadoEn  DateTime   @default(now())
   productos Producto[]
+  compras   OrdenCompra[]
 
   @@map("proveedores")
+}
+
+enum EstadoCompra {
+  borrador
+  emitida
+  parcial
+  recibida
+  cerrada
+  anulada
+}
+
+model OrdenCompra {
+  id              String @id @default(uuid())
+  folio           Int @unique @default(autoincrement())
+  estado          EstadoCompra @default(borrador)
+  proveedorId     String
+  proveedor       Proveedor @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  proveedorNombre String
+  bodegaId        String
+  bodega          Bodega @relation(fields: [bodegaId], references: [id], onDelete: Restrict)
+  bodegaNombre    String
+  entregaEstimada DateTime? @db.Date
+  nota            String?
+  motivoCierre    String?
+  creadoPor       String
+  creadoEn        DateTime @default(now())
+  actualizadoEn   DateTime @updatedAt
+  items           OrdenCompraItem[]
+  operaciones     OperacionCompra[]
+
+  @@index([estado, folio])
+  @@index([proveedorId])
+  @@index([bodegaId])
+  @@map("ordenes_compra")
+}
+
+model OrdenCompraItem {
+  id             String @id @default(uuid())
+  ordenId        String
+  orden          OrdenCompra @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  productoId     String
+  producto       Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  productoNombre String
+  sku            String
+  cantidad       Int
+  costoUnitario  Decimal @db.Decimal(10, 2)
+  operaciones    OperacionCompraItem[]
+
+  @@unique([ordenId, productoId])
+  @@index([productoId])
+  @@map("orden_compra_items")
+}
+
+model OperacionCompra {
+  id             String @id
+  ordenId        String
+  orden          OrdenCompra @relation(fields: [ordenId], references: [id], onDelete: Restrict)
+  recepcionId    String?
+  recepcion      OperacionCompra? @relation("DevolucionesCompra", fields: [recepcionId], references: [id], onDelete: Restrict)
+  devoluciones   OperacionCompra[] @relation("DevolucionesCompra")
+  documento      String
+  nota           String?
+  usuarioNombre  String
+  fecha          DateTime @default(now())
+  items          OperacionCompraItem[]
+  movimientos    MovimientoStock[]
+
+  @@index([ordenId, fecha])
+  @@index([recepcionId])
+  @@map("operaciones_compra")
+}
+
+model OperacionCompraItem {
+  operacionId String
+  operacion   OperacionCompra @relation(fields: [operacionId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        OrdenCompraItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  cantidad    Int
+
+  @@id([operacionId, itemId])
+  @@index([itemId])
+  @@map("operacion_compra_items")
 }
 
 model Categoria {
@@ -269,12 +386,50 @@ model HistorialPrecioLista {
   @@map("historial_precios_lista")
 }
 
+model Cotizacion {
+  id             String   @id
+  folio          Int      @unique @default(autoincrement())
+  clienteId      String
+  cliente        Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  clienteNombre  String
+  vigenteHasta   DateTime @db.Date
+  fecha          DateTime @default(now())
+  anuladaEn      DateTime?
+  observaciones  String?
+  usuarioNombre  String
+  items          CotizacionItem[]
+  descuento      Decimal  @db.Decimal(10, 2)
+  venta          Venta?
+
+  @@index([clienteId])
+  @@index([vigenteHasta])
+  @@map("cotizaciones")
+}
+
+model CotizacionItem {
+  cotizacionId       String
+  cotizacion         Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  posicion           Int
+  // Los valores de la propuesta siguen disponibles cuando se elimina un producto del catálogo.
+  productoReferencia String
+  identidadProducto  IdentidadProducto @relation(fields: [productoReferencia], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  nombre             String
+  codigo             String?
+  cantidad           Int
+  precioUnitario     Decimal @db.Decimal(10, 2)
+  descuento          Decimal @db.Decimal(10, 2)
+  gravado            Boolean
+
+  @@id([cotizacionId, posicion])
+  @@index([productoReferencia])
+  @@map("cotizacion_items")
+}
+
 model Venta {
   id          String            @id @default(uuid())
   fecha       DateTime          @default(now())
   clienteId   String?
   cliente     Cliente?          @relation(fields: [clienteId], references: [id])
-  subtotal    Decimal           @db.Decimal(10, 2) @default(0)
   descuento   Decimal           @db.Decimal(10, 2) @default(0)
   total       Decimal           @db.Decimal(10, 2)
   tipoDocumento String          @default("interno")
@@ -290,6 +445,8 @@ model Venta {
   devoluciones Devolucion[]
   claveIdempotencia String?
   huellaSolicitud   String?
+  cotizacionId String?         @unique
+  cotizacion   Cotizacion?     @relation(fields: [cotizacionId], references: [id], onDelete: Restrict)
 
   @@unique([usuarioId, claveIdempotencia])
   @@index([clienteId])
@@ -309,7 +466,7 @@ model VentaPago {
   metodoPago String
   monto      Decimal @db.Decimal(10, 2)
 
-  @@index([ventaId])
+  @@unique([ventaId, metodoPago])
   @@map("venta_pagos")
 }
 
@@ -339,11 +496,9 @@ model TurnoCaja {
   caja              Caja      @relation(fields: [cajaId], references: [id])
   tipoTurnoId       String
   tipoTurno         TipoTurno @relation(fields: [tipoTurnoId], references: [id])
-  estado            String    @default("abierto") // "abierto" | "cerrado"
   montoInicial      Decimal   @db.Decimal(10, 2)
   montoContado      Decimal?  @db.Decimal(10, 2)
   montoEsperado     Decimal?  @db.Decimal(10, 2)
-  diferencia        Decimal?  @db.Decimal(10, 2)
   notas             String?
   fechaApertura     DateTime  @default(now())
   fechaCierre       DateTime?
@@ -355,8 +510,9 @@ model TurnoCaja {
   movimientosCaja   MovimientoCaja[]
   devoluciones      Devolucion[]
 
-  @@index([estado])
-  @@index([cajaId, estado])
+  @@index([fechaCierre])
+  @@index([cajaId, fechaCierre])
+  @@index([fechaApertura])
   @@map("turnos_caja")
 }
 
@@ -373,7 +529,11 @@ model MovimientoCaja {
   usuarioId   String?
   usuario     Usuario?  @relation(fields: [usuarioId], references: [id])
   fecha       DateTime  @default(now())
+  // Opcionales: si el cliente envía una clave, un reintento devuelve el mismo movimiento.
+  claveIdempotencia String?
+  huellaSolicitud   String?
 
+  @@unique([usuarioId, claveIdempotencia])
   @@index([turnoCajaId])
   @@map("movimientos_caja")
 }
@@ -390,7 +550,6 @@ model VentaItem {
   // Las ventas anteriores a la captura del costo conservan null.
   costoUnitario   Decimal?         @db.Decimal(10, 2)
   descuento       Decimal          @db.Decimal(10, 2) @default(0)
-  subtotal        Decimal          @db.Decimal(10, 2)
   devolucionItems DevolucionItem[]
 
   @@index([ventaId])
@@ -415,9 +574,14 @@ model Devolucion {
   turnoCajaId     String?
   turnoCaja       TurnoCaja? @relation(fields: [turnoCajaId], references: [id])
   metodoReembolso String?    // "efectivo" | "tarjeta" | "transferencia"
+  // Opcionales: si el cliente envía una clave, un reintento devuelve la misma devolución.
+  claveIdempotencia String?
+  huellaSolicitud   String?
 
+  @@unique([usuarioId, claveIdempotencia])
   @@index([ventaId])
   @@index([turnoCajaId])
+  @@index([fecha])
   @@map("devoluciones")
 }
 
@@ -430,7 +594,7 @@ model DevolucionItem {
   cantidad     Int
   subtotal     Decimal    @db.Decimal(10, 2)
 
-  @@index([devolucionId])
+  @@unique([devolucionId, ventaItemId])
   @@index([ventaItemId])
   @@map("devolucion_items")
 }
@@ -443,6 +607,9 @@ model Usuario {
   rolId            String
   rol              Rol               @relation(fields: [rolId], references: [id])
   activo           Boolean           @default(true)
+  // Se incrementa al cambiar/restablecer la contraseña o desactivar la cuenta: invalida
+  // todos los tokens emitidos antes (el JWT lleva la versión con que se firmó).
+  tokenVersion     Int               @default(0)
   creadoEn         DateTime          @default(now())
   ventas           Venta[]
   historialPrecios HistorialPrecio[]

@@ -12,11 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { fechaCompleta } from "@/lib/fechas";
+import { fechaCompleta, hoyStr } from "@/lib/fechas";
 import { money } from "@/lib/format";
 import { useNegocio } from "@/context/NegocioContext";
-
-const fechaLocal = () => new Date().toLocaleDateString("sv-SE");
 
 export default function AbrirTurnoCard({ onAbierto }: { onAbierto: (turno: TurnoCaja) => void }) {
   const { negocio } = useNegocio();
@@ -26,11 +24,12 @@ export default function AbrirTurnoCard({ onAbierto }: { onAbierto: (turno: Turno
   const [tipoTurnoId, setTipoTurnoId] = useState("");
   const [montoInicial, setMontoInicial] = useState("");
   const [abriendo, setAbriendo] = useState(false);
-  const [fecha, setFecha] = useState(fechaLocal);
+  const [fecha, setFecha] = useState(hoyStr);
 
   useEffect(() => {
-    const actualizarFecha = () => setFecha(fechaLocal());
-    const intervalo = window.setInterval(actualizarFecha, 1_000);
+    // La fecha mostrada es la de Chile (America/Santiago); basta revisarla cada minuto y al volver a la ventana.
+    const actualizarFecha = () => setFecha(hoyStr());
+    const intervalo = window.setInterval(actualizarFecha, 60_000);
     window.addEventListener("focus", actualizarFecha);
     return () => {
       window.clearInterval(intervalo);
@@ -68,7 +67,7 @@ export default function AbrirTurnoCard({ onAbierto }: { onAbierto: (turno: Turno
       const turno = continuar ? await turnosApi.actual(caja.id) : await turnosApi.abrir({
         cajaId: caja.id,
         tipoTurnoId: tipo,
-        montoInicial: Number(montoInicial),
+        montoInicial: Math.round(Number(montoInicial)),
       });
       if (!turno) {
         toast.info("El turno se cerró. Selecciona un turno para volver a abrir esta caja.");
@@ -159,8 +158,8 @@ export default function AbrirTurnoCard({ onAbierto }: { onAbierto: (turno: Turno
               ) : (
                 <div className="relative">
                   <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-lg text-muted-foreground">$</span>
-                  <Input id="apertura-fondo" aria-describedby="apertura-fondo-ayuda" type="number" min="0" max="99999999.99"
-                    step="0.01" inputMode="decimal" placeholder="0" className="h-14 pl-9 text-lg font-semibold tabular-nums md:text-lg"
+                  <Input id="apertura-fondo" aria-describedby="apertura-fondo-ayuda" type="number" min="0" max="99999999"
+                    step="1" inputMode="numeric" placeholder="0" className="h-14 pl-9 text-lg font-semibold tabular-nums md:text-lg"
                     value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} required disabled={!caja || abriendo} />
                 </div>
               )}

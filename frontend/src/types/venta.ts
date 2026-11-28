@@ -43,6 +43,7 @@ export interface Venta {
   id: string;
   fecha: string;
   clienteId: string | null;
+  cotizacionId?: string | null;
   cliente: { id: string; nombre: string } | null;
   subtotal: number;
   descuento: number;
@@ -61,6 +62,7 @@ export type VentaInput = {
   turnoCajaId?: string;
   claveIdempotencia?: string;
   clienteId?: string | null;
+  cotizacionId?: string;
   listaPrecioId?: string | null;
   tipoDocumento?: DocumentoVenta;
   pagos?: { metodoPago: MetodoPago; monto: number }[];

@@ -109,8 +109,11 @@ async function eliminar(req, res) {
     if (!bodega) throw new HttpError(404, "Bodega no encontrada");
     if (bodega.principal) throw new HttpError(400, "La bodega principal no se puede eliminar");
 
-    const conStock = await tx.stockBodega.findFirst({ where: { bodegaId: req.params.id, cantidad: { gt: 0 } } });
+    const conStock = await tx.stockBodega.findFirst({ where: { bodegaId: req.params.id, cantidad: { not: 0 } } });
     if (conStock) throw new HttpError(409, "No se puede eliminar: la bodega todavía tiene stock asignado");
+    if (await tx.ordenCompra.findFirst({ where: { bodegaId: req.params.id }, select: { id: true } })) {
+      throw new HttpError(409, "No se puede eliminar: la bodega tiene órdenes de compra");
+    }
 
     await tx.bodega.delete({ where: { id: req.params.id } });
   });
@@ -118,7 +121,7 @@ async function eliminar(req, res) {
 }
 
 // POST /api/bodegas/transferencias — mueve stock entre dos bodegas; el total del
-// producto (Producto.stock) no cambia, solo se redistribuye entre bodegas.
+// producto se mantiene al redistribuir unidades entre bodegas.
 async function transferir(req, res) {
   const parsed = transferenciaSchema.safeParse(req.body);
   if (!parsed.success) {

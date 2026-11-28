@@ -167,7 +167,7 @@ export default function ImportarProductosDialog({ onClose, onImportado }: { onCl
               <span>
                 Total: <strong className="text-foreground">{resultado.resumen.total}</strong>
               </span>
-              <span className="text-emerald-600">Creados: {resultado.resumen.creados}</span>
+              <span className="text-success">Creados: {resultado.resumen.creados}</span>
               <span className="text-primary">Actualizados: {resultado.resumen.actualizados}</span>
               <span className="text-destructive">Errores: {resultado.resumen.errores}</span>
             </div>
@@ -178,7 +178,7 @@ export default function ImportarProductosDialog({ onClose, onImportado }: { onCl
                   .map((r) => (
                     <div key={r.fila} className="flex items-start gap-2 px-4 py-2.5 font-body text-xs">
                       {r.ok ? (
-                        <CheckCircle2 size={14} className="text-amber-500 mt-0.5 shrink-0" />
+                        <CheckCircle2 size={14} className="text-warning mt-0.5 shrink-0" />
                       ) : (
                         <XCircle size={14} className="text-destructive mt-0.5 shrink-0" />
                       )}

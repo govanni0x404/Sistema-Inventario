@@ -30,18 +30,18 @@ export default function UserMenu({ collapsed }: { collapsed?: boolean }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-sidebar-accent transition-colors cursor-pointer"
+          className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent/70 focus-visible:outline-2 focus-visible:outline-sidebar-primary"
           aria-label="Menú de usuario"
         >
-          <Avatar className="size-8 shrink-0">
-            <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground font-display text-xs">
+          <Avatar className="size-8 shrink-0 ring-2 ring-sidebar-primary/40 ring-offset-0">
+            <AvatarFallback className="brand-gradient font-display text-xs font-bold">
               {iniciales(usuario.nombre)}
             </AvatarFallback>
           </Avatar>
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1">
-                <div className="font-body text-xs font-medium text-sidebar-foreground truncate">{usuario.nombre}</div>
+                <div className="font-body text-xs font-semibold text-sidebar-foreground truncate">{usuario.nombre}</div>
                 <div className="font-body text-[11px] text-sidebar-muted capitalize">{usuario.rol}</div>
               </div>
               <ChevronsUpDown size={14} className="text-sidebar-muted shrink-0" />

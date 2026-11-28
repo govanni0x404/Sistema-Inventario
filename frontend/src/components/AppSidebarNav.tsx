@@ -41,7 +41,7 @@ export default function AppSidebarNav({
         .sort(compareLabels),
     }))
     .filter(({ items }) => items.length > 0);
-  const groupButton = "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-semibold hover:bg-sidebar-accent/70 focus-visible:outline-2 focus-visible:outline-sidebar-primary";
+  const groupButton = "flex min-h-9 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[11px] font-semibold tracking-[0.12em] uppercase transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground focus-visible:outline-2 focus-visible:outline-sidebar-primary";
 
   const navigate = () => {
     setPopup(null);
@@ -60,24 +60,29 @@ export default function AppSidebarNav({
         aria-label={shortcut && collapsed ? label : undefined}
         title={shortcut && collapsed ? label : undefined}
         className={({ isActive }) => cn(
-          "flex items-center gap-2.5 rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-sidebar-primary",
+          "relative flex items-center gap-2.5 rounded-lg transition-colors focus-visible:outline-2 focus-visible:outline-sidebar-primary",
+          "before:absolute before:inset-y-1.5 before:left-0 before:w-1 before:rounded-r-full before:bg-sidebar-primary before:opacity-0 before:transition-opacity motion-reduce:before:transition-none",
           shortcut ? "min-h-10 px-3 text-sm font-semibold" : "min-h-9 px-2.5 text-[13px] font-medium",
           shortcut && collapsed && "justify-center px-0",
           isActive
-              ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-            : "text-sidebar-foreground/85 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+            ? "bg-linear-to-r from-sidebar-accent to-sidebar-accent/40 text-sidebar-accent-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] before:opacity-100"
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
         )}
       >
-        <Icon size={shortcut ? 18 : 16} className="shrink-0" aria-hidden="true" />
-        {!(shortcut && collapsed) && <span>{label}</span>}
+        {({ isActive }) => (
+          <>
+            <Icon size={shortcut ? 18 : 16} className={cn("shrink-0 transition-colors", isActive ? "text-sidebar-primary" : "text-sidebar-muted")} aria-hidden="true" />
+            {!(shortcut && collapsed) && <span className="truncate">{label}</span>}
+          </>
+        )}
       </NavLink>
     </li>
   );
 
   return (
     <div className="sidebar-photo flex h-full min-h-0 flex-col">
-      <div className={cn("flex min-h-24 shrink-0 items-center gap-3 border-b border-white/15 px-5", collapsed && "flex-col justify-center gap-1.5 px-2")}>
-        <img src="/favicon.svg" alt="" width={36} height={36} className="size-9 shrink-0" />
+      <div className={cn("flex min-h-24 shrink-0 items-center gap-3 border-b border-white/10 px-5", collapsed && "flex-col justify-center gap-1.5 px-2")}>
+        <img src="/favicon.svg" alt="" width={36} height={36} className="size-9 shrink-0 drop-shadow-[0_4px_10px_rgb(125_211_238/0.35)]" />
         <div className={cn("min-w-0 flex-1", collapsed && "sr-only")}>
           <div className="truncate font-display text-base font-bold leading-tight">{SYSTEM_NAME}</div>
           <div className="mt-1 truncate text-xs text-sidebar-muted" title={negocio.nombre}>{negocio.nombre}</div>
@@ -92,7 +97,7 @@ export default function AppSidebarNav({
 
       <nav aria-label="Menú principal" className="flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-color:var(--sidebar-border)_transparent] [scrollbar-width:thin]">
         {shortcuts.length > 0 && (
-          <ul aria-label="Accesos directos" className="mb-3 space-y-1 border-b border-white/15 pb-3">
+          <ul aria-label="Accesos directos" className="mb-3 space-y-1 border-b border-white/10 pb-3">
             {shortcuts.map((item) => renderLink(item, true))}
           </ul>
         )}
@@ -100,7 +105,7 @@ export default function AppSidebarNav({
           const active = items.some(({ to }) => matchPath(to, pathname));
           const preference = expanded[label];
           const open = active && preference?.pathname !== pathname ? true : (preference?.open ?? active);
-          const buttonClass = cn(groupButton, active ? "bg-sidebar-accent/70 text-sidebar-primary" : "text-sidebar-foreground");
+          const buttonClass = cn(groupButton, active ? "text-sidebar-primary" : "text-sidebar-muted");
           const links = (
             <ul aria-label={label} className="space-y-0.5">
               {items.map((item) => renderLink(item))}
@@ -114,7 +119,7 @@ export default function AppSidebarNav({
                   <GroupIcon size={18} aria-hidden="true" />
                 </PopoverTrigger>
                 <PopoverContent side="right" align="start" sideOffset={14} aria-label={label} className="max-h-(--radix-popover-content-available-height) w-56 overflow-y-auto border-sidebar-border bg-sidebar p-2 text-sidebar-foreground">
-                  <p className="px-2.5 py-2 text-xs font-semibold text-sidebar-primary">{label}</p>
+                  <p className="px-2.5 py-2 text-[11px] font-semibold tracking-[0.12em] text-sidebar-primary uppercase">{label}</p>
                   {links}
                 </PopoverContent>
               </Popover>
@@ -124,11 +129,11 @@ export default function AppSidebarNav({
           return (
             <Collapsible key={label} open={open} onOpenChange={(open) => setExpanded((current) => ({ ...current, [label]: { open, pathname } }))}>
               <CollapsibleTrigger type="button" className={cn("group", buttonClass)}>
-                <GroupIcon size={17} className="shrink-0" aria-hidden="true" />
+                <GroupIcon size={15} className="shrink-0 opacity-80" aria-hidden="true" />
                 <span className="flex-1">{label}</span>
                 <ChevronDown size={15} className="shrink-0 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
               </CollapsibleTrigger>
-              <CollapsibleContent className="mt-1 mb-2 ml-5 border-l border-white/15 pl-2">
+              <CollapsibleContent className="mt-0.5 mb-2 ml-[1.15rem] border-l border-white/10 pl-2">
                 {links}
               </CollapsibleContent>
             </Collapsible>
@@ -136,11 +141,11 @@ export default function AppSidebarNav({
         })}
       </nav>
 
-      <div className={cn("flex shrink-0 items-center gap-1 border-t border-white/15 p-2", collapsed && "flex-col")}>
+      <div className={cn("flex shrink-0 items-center gap-1 border-t border-white/10 bg-black/10 p-2", collapsed && "flex-col")}>
         <div className="min-w-0 flex-1">
           <UserMenu collapsed={collapsed} />
         </div>
-        <ThemeToggle />
+        <ThemeToggle className="text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-sidebar-ring/50" />
       </div>
     </div>
   );

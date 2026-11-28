@@ -171,13 +171,24 @@ export default function ProveedoresPage() {
                 <Fragment key={p.id}>
                   <TableRow className="cursor-pointer" onClick={() => toggleExpand(p)}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 rounded text-left hover:text-primary focus-visible:underline"
+                        aria-expanded={expanded === p.id}
+                        aria-controls={`proveedor-detalle-${p.id}`}
+                        aria-label={`${expanded === p.id ? "Ocultar" : "Ver"} productos asociados de ${p.nombre}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpand(p);
+                        }}
+                      >
                         <ChevronDown
                           size={14}
+                          aria-hidden="true"
                           className={cn("text-muted-foreground transition-transform shrink-0", expanded === p.id && "rotate-180")}
                         />
                         <span className="font-body font-medium text-sm text-foreground">{p.nombre}</span>
-                      </div>
+                      </button>
                     </TableCell>
                     <TableCell className="font-body text-xs text-muted-foreground">
                       {[p.contacto, p.telefono, p.email].filter(Boolean).join(" · ") || "Sin datos adicionales"}
@@ -212,7 +223,7 @@ export default function ProveedoresPage() {
                     </TableCell>
                   </TableRow>
                   {expanded === p.id && (
-                    <TableRow className="hover:bg-transparent">
+                    <TableRow id={`proveedor-detalle-${p.id}`} className="hover:bg-transparent">
                       <TableCell colSpan={3} className="bg-muted/40 whitespace-normal py-3">
                         <div className="font-body text-xs font-medium mb-2 text-muted-foreground">Productos asociados</div>
                         {detalleCargando && <div className="font-body text-xs text-muted-foreground">Cargando…</div>}

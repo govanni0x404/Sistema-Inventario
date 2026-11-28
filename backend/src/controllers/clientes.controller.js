@@ -1,6 +1,11 @@
 const { z } = require("zod");
 const prisma = require("../lib/prisma");
 const HttpError = require("../lib/HttpError");
+const { tienePermiso } = require("../lib/permisos");
+const { aCentavos, subtotalLineaCentavos } = require("../lib/dinero");
+
+// Compras recientes que se muestran en la ficha del cliente.
+const LIMITE_VENTAS_CLIENTE = 50;
 
 const clienteSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
@@ -22,29 +27,35 @@ async function listar(req, res) {
   res.json(clientes);
 }
 
-// GET /api/clientes/:id  (incluye historial de compras)
+// GET /api/clientes/:id  (incluye las últimas compras solo si el rol tiene "historial":
+// la ruta queda abierta para Caja, pero las ventas son información de Historial).
 async function obtener(req, res) {
+  const verVentas = await tienePermiso(req.user.rol, "historial");
   const cliente = await prisma.cliente.findUnique({
     where: { id: req.params.id },
-    include: {
-      ventas: {
-        orderBy: { fecha: "desc" },
-        include: { items: true, pagos: true },
-      },
-    },
+    include: verVentas
+      ? {
+        ventas: {
+          orderBy: [{ fecha: "desc" }, { id: "desc" }],
+          take: LIMITE_VENTAS_CLIENTE,
+          include: { items: true, pagos: true },
+        },
+      }
+      : undefined,
   });
   if (!cliente) throw new HttpError(404, "Cliente no encontrado");
 
   res.json({
     ...cliente,
-    ventas: cliente.ventas.map(({ claveIdempotencia, huellaSolicitud, ...v }) => ({
+    ventas: (cliente.ventas ?? []).map(({ claveIdempotencia, huellaSolicitud, ...v }) => ({
       ...v,
       total: Number(v.total),
+      subtotal: (aCentavos(v.total) + aCentavos(v.descuento)) / 100,
       pagos: v.pagos.map((p) => ({ ...p, monto: Number(p.monto) })),
       items: v.items.map(({ costoUnitario, ...it }) => ({
         ...it,
         precioUnitario: Number(it.precioUnitario),
-        subtotal: Number(it.subtotal),
+        subtotal: subtotalLineaCentavos(it) / 100,
       })),
     })),
   });
@@ -85,6 +96,9 @@ async function eliminar(req, res) {
   const tieneVentas = await prisma.venta.findFirst({ where: { clienteId: req.params.id } });
   if (tieneVentas) {
     throw new HttpError(409, "No se puede eliminar: el cliente tiene ventas registradas");
+  }
+  if (await prisma.cotizacion.findFirst({ where: { clienteId: existente.id }, select: { id: true } })) {
+    throw new HttpError(409, "No se puede eliminar: el cliente tiene cotizaciones registradas");
   }
 
   await prisma.cliente.delete({ where: { id: req.params.id } });

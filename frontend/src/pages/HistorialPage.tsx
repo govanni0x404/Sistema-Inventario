@@ -104,30 +104,46 @@ export default function HistorialPage() {
           return;
         }
       }
-      const [v, c, t] = await Promise.all([
-        ventasApi.listar({
-          ...parametrosFecha(),
-          clienteId: clienteId || undefined,
-          metodoPago: metodoPago || undefined,
-          turnoCajaId: turnoCajaId || undefined,
-          limite: MAX_VENTAS + 1,
-          folio: folio || undefined,
-          tipo: tipo || undefined,
-        }),
-        clientesApi.listar(),
-        turnosApi.listar(),
-      ]);
+      const v = await ventasApi.listar({
+        ...parametrosFecha(),
+        clienteId: clienteId || undefined,
+        metodoPago: metodoPago || undefined,
+        turnoCajaId: turnoCajaId || undefined,
+        limite: MAX_VENTAS + 1,
+        folio: folio || undefined,
+        tipo: tipo || undefined,
+      });
       if (solicitud !== solicitudActual.current) return;
       setTruncado(v.length > MAX_VENTAS);
       setVentas(v.slice(0, MAX_VENTAS));
-      setClientes(c);
-      setTurnos(t);
     } catch (e) {
       if (solicitud === solicitudActual.current) {
         setLoadError(e instanceof ApiError ? e.message : "No se pudo conectar con el servidor");
       }
     }
   };
+
+  // Clientes y turnos (opciones de los filtros) se cargan una sola vez, no con cada cambio de filtro.
+  const filtrosCargados = useRef(false);
+  const cargarFiltros = async () => {
+    try {
+      const [c, t] = await Promise.all([clientesApi.listar(), turnosApi.listar()]);
+      setClientes(c);
+      setTurnos(t);
+      filtrosCargados.current = true;
+    } catch {
+      // Sin las listas, los filtros quedan vacíos; "reintentar" vuelve a pedirlas.
+    }
+  };
+
+  const reintentar = () => {
+    cargar();
+    if (!filtrosCargados.current) cargarFiltros();
+  };
+
+  useEffect(() => {
+    cargarFiltros();
+  }, []);
 
   useEffect(() => {
     cargar();
@@ -160,7 +176,7 @@ export default function HistorialPage() {
         Cliente: nombreCliente(v),
         Turno: v.turnoCaja?.tipoTurno.nombre ?? "",
         Caja: v.turnoCaja?.caja.nombre ?? "",
-        "Método de pago": v.esCortesia ? `Cortesía (${v.motivoCortesia ?? ""})` : v.pagos.map((p) => p.metodoPago).join(" + "),
+        "Método de pago": v.esCortesia ? `Cortesía (${v.motivoCortesia ?? ""})` : v.pagos.map((p) => ETIQUETAS_PAGO[p.metodoPago] ?? p.metodoPago).join(" + "),
         Subtotal: v.subtotal,
         Descuento: v.descuento,
         Total: v.total,
@@ -293,7 +309,7 @@ export default function HistorialPage() {
 
       {loadError && (
         <div className="font-body text-sm text-center py-10 text-destructive">
-          {loadError} — <button className="underline" onClick={cargar}>reintentar</button>
+          {loadError} — <button className="underline" onClick={reintentar}>reintentar</button>
         </div>
       )}
       {!loadError && ventas === null && (

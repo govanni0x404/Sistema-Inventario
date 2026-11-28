@@ -3,6 +3,8 @@ const METODOS_PAGO = require("../lib/metodosPago");
 const { resolverRango, claveDia } = require("../lib/rangoFechas");
 const HttpError = require("../lib/HttpError");
 const { filtroFolio } = require("../lib/folioVenta");
+const { agruparProductosVendidos, subtotalLineaSql } = require("../lib/reportesVenta");
+const { subtotalLineaCentavos } = require("../lib/dinero");
 
 const LIMITE_DETALLE = 1000;
 const CLIENTE = { select: { nombre: true } };
@@ -13,13 +15,7 @@ async function productosTop(req, res) {
   const { rangoInicio, rangoFin } = resolverRango(req.query, ahora);
   const limite = Math.min(100, Math.max(1, parseInt(req.query.limite, 10) || 20));
 
-  const itemsRaw = await prisma.ventaItem.groupBy({
-    by: ["productoId"],
-    where: { venta: { fecha: { gte: rangoInicio, lte: rangoFin }, esCortesia: false } },
-    _sum: { cantidad: true, subtotal: true },
-    orderBy: { _sum: { subtotal: "desc" } },
-    take: limite,
-  });
+  const itemsRaw = await agruparProductosVendidos(rangoInicio, rangoFin, limite);
 
   const productos = await prisma.producto.findMany({
     where: { id: { in: itemsRaw.map((i) => i.productoId) } },
@@ -33,8 +29,8 @@ async function productosTop(req, res) {
       productoId: it.productoId,
       nombre: productoPorId.get(it.productoId)?.nombre ?? "Producto eliminado",
       codigoBarras: productoPorId.get(it.productoId)?.codigoBarras ?? null,
-      cantidad: it._sum.cantidad,
-      subtotal: Number(it._sum.subtotal),
+      cantidad: it.cantidad,
+      subtotal: it.subtotal,
     })),
   });
 }
@@ -113,8 +109,8 @@ async function productosMargen(req, res) {
     WITH pesos AS (
       SELECT i.id, i."ventaId", i."productoId", i.cantidad, i."costoUnitario",
              v.total * 100 AS "totalCentavos",
-             CASE WHEN SUM(i.subtotal) OVER (PARTITION BY i."ventaId") > 0
-                  THEN i.subtotal * 100 ELSE i.cantidad END AS peso
+             CASE WHEN SUM(${subtotalLineaSql}) OVER (PARTITION BY i."ventaId") > 0
+                  THEN ${subtotalLineaSql} * 100 ELSE i.cantidad END AS peso
       FROM venta_items i JOIN ventas v ON v.id = i."ventaId"
       WHERE v.fecha BETWEEN (${rangoInicio} AT TIME ZONE 'UTC') AND (${rangoFin} AT TIME ZONE 'UTC')
         AND NOT v."esCortesia"
@@ -203,7 +199,7 @@ async function detalleProductos(req, res) {
       ...(busqueda && { producto: { OR: [{ nombre: coincide }, { codigoBarras: coincide }] } }),
     },
     select: {
-      id: true, ventaId: true, cantidad: true, subtotal: true,
+      id: true, ventaId: true, cantidad: true, precioUnitario: true, descuento: true,
       producto: { select: { nombre: true, codigoBarras: true } },
       venta: { select: { fecha: true, esCortesia: true } },
       devolucionItems: { select: { cantidad: true } },
@@ -215,7 +211,7 @@ async function detalleProductos(req, res) {
     id: it.id, ventaId: it.ventaId, fecha: it.venta.fecha, esCortesia: it.venta.esCortesia,
     producto: it.producto.nombre, codigoBarras: it.producto.codigoBarras, cantidad: it.cantidad,
     cantidadDevuelta: it.devolucionItems.reduce((total, devolucion) => total + devolucion.cantidad, 0),
-    subtotal: Number(it.subtotal),
+    subtotal: subtotalLineaCentavos(it) / 100,
   }));
   res.json({ filas, truncado: items.length > LIMITE_DETALLE });
 }
